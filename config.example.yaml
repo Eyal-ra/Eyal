@@ -1,0 +1,31 @@
+jotform:
+  api_key: "YOUR_JOTFORM_API_KEY"
+  form_id: "YOUR_FORM_ID"
+  base_url: "https://api.jotform.com"
+  field_map:
+    full_name: "q3_fullName"
+    phone: "q4_phone"
+    id_number: "q5_idNumber"
+
+powerlink:
+  api_url: "https://api.powerlink.co.il/v1"
+  api_token: "YOUR_POWERLINK_TOKEN"
+  account_field: "fullName"
+  phone_field: "telephone"
+  id_field: "idNumber"
+  customer_number_field: "customerNumber"
+
+ravgonit:
+  executable_path: 'C:\Program Files\Ravgonit\Ravgonit.exe'
+  window_title_regex: "רבגונית.*"
+  customer_search_field: "customer_id_input"
+  full_name_field: "full_name_input"
+  save_button: "save_button"
+  startup_wait_seconds: 5
+
+state:
+  path: "state/seen_submissions.json"
+
+matching:
+  require_phone_or_id: true
+  fuzzy_name_threshold: 0.85
