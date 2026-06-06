@@ -11,9 +11,22 @@ from flask import (
     url_for,
 )
 
-from .auth import find_user, get_users, login_required, verify_password
+from .auth import (
+    find_user,
+    get_csrf_token,
+    get_users,
+    login_required,
+    validate_csrf,
+    verify_password,
+)
 
 bp = Blueprint("dashboard", __name__)
+
+
+@bp.app_context_processor
+def inject_csrf_token():
+    """מאפשר לתבניות לקרוא ל-csrf_token() כדי להטמיע את הטוקן בטפסים."""
+    return {"csrf_token": get_csrf_token}
 
 
 @bp.before_app_request
@@ -40,6 +53,9 @@ def login():
 
     error = None
     if request.method == "POST":
+        if not validate_csrf(request.form.get("csrf_token")):
+            error = "טוקן אבטחה לא תקין. רעננו את העמוד ונסו שוב."
+            return render_template("login.html", error=error)
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
         users = get_users(current_app.config["APP_CONFIG"])

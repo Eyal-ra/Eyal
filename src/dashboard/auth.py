@@ -41,3 +41,18 @@ def login_required(view):
         return view(*args, **kwargs)
 
     return wrapped
+
+
+def get_csrf_token() -> str:
+    """מחזיר טוקן CSRF לסשן הנוכחי, יוצר אחד אם אין."""
+    token = session.get("_csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["_csrf_token"] = token
+    return token
+
+
+def validate_csrf(submitted: str | None) -> bool:
+    token = session.get("_csrf_token")
+    return bool(token) and secrets.compare_digest(token, submitted or "")
+

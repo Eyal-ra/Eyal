@@ -7,6 +7,7 @@
   <div class="alert error">{{ error }}</div>
   {% endif %}
   <form method="post" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>
       שם משתמש
       <input type="text" name="username" autofocus required>
