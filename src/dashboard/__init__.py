@@ -42,6 +42,13 @@ def create_app(config: dict | None = None) -> Flask:
         )
     app.config["SECRET_KEY"] = secret
 
+    # הקשחת עוגיית ה-session: לא נגישה ל-JavaScript ולא נשלחת בבקשות חוצות-אתר.
+    # Secure נשאר כבוי כי הדשבורד מוגש פנימית מעל HTTP (בלי HTTPS).
+    app.config.update(
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+    )
+
     from .views import bp
 
     app.register_blueprint(bp)
