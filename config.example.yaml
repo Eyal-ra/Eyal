@@ -29,3 +29,20 @@ state:
 matching:
   require_phone_or_id: true
   fuzzy_name_threshold: 0.85
+
+dashboard:
+  host: "0.0.0.0"          # 0.0.0.0 = נגיש מכל המחשבים ברשת; 127.0.0.1 = מקומי בלבד
+  port: 80                 # פורט 80 = בלי מספר פורט בכתובת. אם תפוס, השתמש למשל ב-8080
+  hostname: "cpateam-dash" # הכתובת הידידותית. הריצו scripts/setup_hostname.py כדי להפעיל
+  # מפתח קבוע לחתימת ה-sessions. צרו מחרוזת אקראית, למשל:
+  #   python -c "import secrets; print(secrets.token_hex(32))"
+  secret_key: "CHANGE_ME_TO_A_LONG_RANDOM_STRING"
+  users:
+    # ליצירת password_hash:  python -m src.dashboard.hash_password
+    - username: "eyal"
+      display_name: "אייל רייטר"
+      password_hash: "PASTE_HASH_HERE"
+    # אפשר גם סיסמה בטקסט גלוי (פחות מומלץ) במקום password_hash:
+    # - username: "office"
+    #   display_name: "משרד"
+    #   password: "1234"
