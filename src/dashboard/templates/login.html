@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}כניסה - דשבורד צוות{% endblock %}
+{% block content %}
+<div class="login-box">
+  <h1>כניסה לדשבורד</h1>
+  {% if error %}
+  <div class="alert error">{{ error }}</div>
+  {% endif %}
+  <form method="post" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>
+      שם משתמש
+      <input type="text" name="username" autofocus required>
+    </label>
+    <label>
+      סיסמה
+      <input type="password" name="password" required>
+    </label>
+    <button type="submit">התחבר</button>
+  </form>
+</div>
+{% endblock %}

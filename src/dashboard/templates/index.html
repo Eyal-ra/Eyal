@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}עמוד ראשי - דשבורד צוות{% endblock %}
+{% block content %}
+<h1>שלום, {{ g.user.display_name }}</h1>
+<p class="subtitle">הגשות אחרונות מ-Jotform הממתינות לסנכרון.</p>
+
+{% if data_error %}
+<div class="alert info">{{ data_error }}</div>
+{% endif %}
+
+{% if submissions %}
+<table class="submissions">
+  <thead>
+    <tr>
+      <th>שם מלא</th>
+      <th>טלפון</th>
+      <th>ת.ז.</th>
+      <th>הוגש</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in submissions %}
+    <tr>
+      <td>{{ s.full_name }}</td>
+      <td>{{ s.phone }}</td>
+      <td>{{ s.id_number }}</td>
+      <td>{{ s.created_at }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% elif not data_error %}
+<div class="alert info">אין הגשות חדשות.</div>
+{% endif %}
+{% endblock %}
