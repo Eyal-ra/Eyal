@@ -10,3 +10,4 @@ state/
 .pytest_cache/
 .mypy_cache/
 .DS_Store
+expenses_to_forward.html
