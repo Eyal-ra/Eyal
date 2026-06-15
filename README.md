@@ -99,7 +99,7 @@ python -m src.invoice_learn --config config.yaml --since 2025-01-01T00:00:00Z
 | מסווג חשבונית נכנסת (חילוץ לכבוד/ח.פ. → יעד) | **מוכן** (`invoice_classifier`) |
 | ניתוב + שליחה בפועל (forward) | **מוכן** — הרצה יבשה; `--apply` דורש Mail.Send |
 | סימון "✓ נשלח לסאמיט" בעת שליחה | **מוכן** — דורש Mail.ReadWrite ל-`--apply` |
-| אימות חזרה של "קיבלנו" מסאמיט | מתוכנן |
+| אימות חזרה של "קיבלנו"/"אישור קבלת" | **מוכן** (`invoice_verify`, קריאה בלבד) |
 
 ## מבנה הקוד — Invoice Router
 
@@ -108,13 +108,16 @@ src/
   invoice_routing.py    - לוגיקה טהורה: חילוץ לקוח/ח.פ., בניית מפת ניתוב
   invoice_classifier.py - מחליט לאן חשבונית נכנסת הולכת (חברה/לקוח/לבדיקה)
   invoice_processor.py  - מעביר ליעד + מסמן "✓ נשלח לסאמיט" (פעולות מוזרקות)
+  invoice_verifier.py   - מתאים העברות מול אישורי "קיבלנו"/"אישור קבלת"
   invoice_graph.py      - Microsoft Graph: קריאת Sent/Inbox + forward + סימון
   invoice_learn.py      - CLI: מושך Sent → לומד → כותב מפה+דוח לאישור
   invoice_process.py    - CLI: מושך Inbox → מנתב+שולח (יבש כברירת מחדל, --apply)
+  invoice_verify.py     - CLI: מצליב הועבר↔אושר, מדווח על פערים (קריאה בלבד)
 tests/
   test_invoice_routing.py    - בדיקות יחידה על מפת הניתוב
   test_invoice_classifier.py - בדיקות יחידה על הסיווג
   test_invoice_processor.py  - בדיקות יחידה על השליחה+הסימון
+  test_invoice_verifier.py   - בדיקות יחידה על אימות הקליטה
 ```
 
 מסמך הקמת ההרשאות מול Microsoft 365: ראה [`docs/microsoft365_setup.md`](docs/microsoft365_setup.md).

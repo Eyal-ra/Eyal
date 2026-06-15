@@ -98,7 +98,7 @@ class GraphClient:
     def iter_inbox_messages(self, limit: int = 200, since: str | None = None):
         """Yield Inbox messages as dicts ``{id, subject, body}``, newest first."""
         params = {
-            "$select": "id,subject,body,sentDateTime",
+            "$select": "id,subject,body,from,sentDateTime",
             "$orderby": "sentDateTime desc",
             "$top": "50",
         }
@@ -115,10 +115,12 @@ class GraphClient:
             resp.raise_for_status()
             payload = resp.json()
             for item in payload.get("value", []):
+                sender = (item.get("from") or {}).get("emailAddress", {}).get("address", "")
                 yield {
                     "id": item.get("id"),
                     "subject": item.get("subject") or "",
                     "body": (item.get("body") or {}).get("content") or "",
+                    "sender": sender,
                 }
                 fetched += 1
                 if fetched >= limit:
