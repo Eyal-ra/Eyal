@@ -96,17 +96,21 @@ python -m src.invoice_learn --config config.yaml --since 2025-01-01T00:00:00Z
 | שלב | סטטוס |
 |------|--------|
 | לומד ניתוב (Sent Items → מפה) | **מוכן** |
-| מסווג חשבונית נכנסת (חילוץ לכבוד/ח.פ.) | מוכן (לוגיקה ב-`invoice_routing`) |
+| מסווג חשבונית נכנסת (חילוץ לכבוד/ח.פ. → יעד) | **מוכן** (`invoice_classifier`) |
 | ניתוב + שליחה בפועל | מתוכנן (דורש הרשאת Mail.Send) |
-| אימות "קיבלנו" + סימון "✓ נשלח לסאמיט" | מתוכנן |
+| אימות "קיבלנו" + סימון "✓ נשלח לסאמיט" | מתוכנן (דורש Mail.ReadWrite) |
 
 ## מבנה הקוד — Invoice Router
 
 ```
 src/
-  invoice_routing.py - לוגיקה טהורה: חילוץ לקוח/ח.פ., בניית מפת ניתוב
-  invoice_graph.py   - קורא Sent Items מ-Microsoft Graph
-  invoice_learn.py   - CLI: מושך → לומד → כותב מפה+דוח לאישור
+  invoice_routing.py    - לוגיקה טהורה: חילוץ לקוח/ח.פ., בניית מפת ניתוב
+  invoice_classifier.py - מחליט לאן חשבונית נכנסת הולכת (חברה/לקוח/לבדיקה)
+  invoice_graph.py      - קורא Sent Items מ-Microsoft Graph
+  invoice_learn.py      - CLI: מושך → לומד → כותב מפה+דוח לאישור
 tests/
-  test_invoice_routing.py - בדיקות יחידה על דוגמאות אמיתיות
+  test_invoice_routing.py    - בדיקות יחידה על מפת הניתוב
+  test_invoice_classifier.py - בדיקות יחידה על הסיווג
 ```
+
+מסמך הקמת ההרשאות מול Microsoft 365: ראה [`docs/microsoft365_setup.md`](docs/microsoft365_setup.md).
