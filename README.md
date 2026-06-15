@@ -97,8 +97,9 @@ python -m src.invoice_learn --config config.yaml --since 2025-01-01T00:00:00Z
 |------|--------|
 | לומד ניתוב (Sent Items → מפה) | **מוכן** |
 | מסווג חשבונית נכנסת (חילוץ לכבוד/ח.פ. → יעד) | **מוכן** (`invoice_classifier`) |
-| ניתוב + שליחה בפועל | מתוכנן (דורש הרשאת Mail.Send) |
-| אימות "קיבלנו" + סימון "✓ נשלח לסאמיט" | מתוכנן (דורש Mail.ReadWrite) |
+| ניתוב + שליחה בפועל (forward) | **מוכן** — הרצה יבשה; `--apply` דורש Mail.Send |
+| סימון "✓ נשלח לסאמיט" בעת שליחה | **מוכן** — דורש Mail.ReadWrite ל-`--apply` |
+| אימות חזרה של "קיבלנו" מסאמיט | מתוכנן |
 
 ## מבנה הקוד — Invoice Router
 
@@ -106,11 +107,14 @@ python -m src.invoice_learn --config config.yaml --since 2025-01-01T00:00:00Z
 src/
   invoice_routing.py    - לוגיקה טהורה: חילוץ לקוח/ח.פ., בניית מפת ניתוב
   invoice_classifier.py - מחליט לאן חשבונית נכנסת הולכת (חברה/לקוח/לבדיקה)
-  invoice_graph.py      - קורא Sent Items מ-Microsoft Graph
-  invoice_learn.py      - CLI: מושך → לומד → כותב מפה+דוח לאישור
+  invoice_processor.py  - מעביר ליעד + מסמן "✓ נשלח לסאמיט" (פעולות מוזרקות)
+  invoice_graph.py      - Microsoft Graph: קריאת Sent/Inbox + forward + סימון
+  invoice_learn.py      - CLI: מושך Sent → לומד → כותב מפה+דוח לאישור
+  invoice_process.py    - CLI: מושך Inbox → מנתב+שולח (יבש כברירת מחדל, --apply)
 tests/
   test_invoice_routing.py    - בדיקות יחידה על מפת הניתוב
   test_invoice_classifier.py - בדיקות יחידה על הסיווג
+  test_invoice_processor.py  - בדיקות יחידה על השליחה+הסימון
 ```
 
 מסמך הקמת ההרשאות מול Microsoft 365: ראה [`docs/microsoft365_setup.md`](docs/microsoft365_setup.md).

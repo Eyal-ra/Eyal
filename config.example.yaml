@@ -33,6 +33,13 @@ matching:
 # Invoice router — learns where each invoice should be forwarded (which
 # client's bookkeeping "intake" mailbox) from your own Sent Items history.
 invoice_router:
+  # Your own company book — invoices addressed to "אייל רייטר…" go here.
+  company_address: "516879236@expense.co.il"
+  company_aliases: ["אייל רייטר"]
+  # Optional: map a client's 9-digit id straight to an address.
+  # id_map:
+  #   "517143814": "517143814@expense.co.il"
+
   graph:
     # Easiest: paste a delegated Graph access token with Mail.Read scope.
     access_token: "YOUR_GRAPH_ACCESS_TOKEN"

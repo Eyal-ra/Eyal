@@ -95,6 +95,73 @@ class GraphClient:
             url = payload.get("@odata.nextLink")
             params = None  # nextLink already encodes the query
 
+    def iter_inbox_messages(self, limit: int = 200, since: str | None = None):
+        """Yield Inbox messages as dicts ``{id, subject, body}``, newest first."""
+        params = {
+            "$select": "id,subject,body,sentDateTime",
+            "$orderby": "sentDateTime desc",
+            "$top": "50",
+        }
+        if since:
+            params["$filter"] = f"receivedDateTime ge {since}"
+        url = f"{self.base}/mailFolders/Inbox/messages"
+        fetched = 0
+
+        while url and fetched < limit:
+            resp = requests.get(url, headers=self._headers(), params=params, timeout=60)
+            if resp.status_code == 429:
+                time.sleep(int(resp.headers.get("Retry-After", "5")))
+                continue
+            resp.raise_for_status()
+            payload = resp.json()
+            for item in payload.get("value", []):
+                yield {
+                    "id": item.get("id"),
+                    "subject": item.get("subject") or "",
+                    "body": (item.get("body") or {}).get("content") or "",
+                }
+                fetched += 1
+                if fetched >= limit:
+                    break
+            url = payload.get("@odata.nextLink")
+            params = None
+
+    # --- write actions (need Mail.Send / Mail.ReadWrite) -------------------
+
+    def forward(self, message_id: str, to: list[str], comment: str = "") -> None:
+        """Forward an existing message (with attachments) to *to*."""
+        payload = {
+            "comment": comment,
+            "toRecipients": [{"emailAddress": {"address": a}} for a in to],
+        }
+        resp = requests.post(
+            f"{self.base}/messages/{message_id}/forward",
+            headers={**self._headers(), "Content-Type": "application/json"},
+            json=payload,
+            timeout=60,
+        )
+        resp.raise_for_status()
+
+    def add_category(self, message_id: str, category: str) -> None:
+        """Append a category to a message without dropping existing ones."""
+        get = requests.get(
+            f"{self.base}/messages/{message_id}",
+            headers=self._headers(),
+            params={"$select": "categories"},
+            timeout=60,
+        )
+        get.raise_for_status()
+        categories = get.json().get("categories") or []
+        if category in categories:
+            return
+        patch = requests.patch(
+            f"{self.base}/messages/{message_id}",
+            headers={**self._headers(), "Content-Type": "application/json"},
+            json={"categories": categories + [category]},
+            timeout=60,
+        )
+        patch.raise_for_status()
+
 
 def _flatten_recipients(item: dict) -> list[str]:
     out: list[str] = []
