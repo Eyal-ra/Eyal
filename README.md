@@ -97,6 +97,7 @@ python -m src.invoice_learn --config config.yaml --since 2025-01-01T00:00:00Z
 |------|--------|
 | לומד ניתוב (Sent Items → מפה) | **מוכן** |
 | מסווג חשבונית נכנסת (חילוץ לכבוד/ח.פ. → יעד) | **מוכן** (`invoice_classifier`) |
+| חילוץ טקסט מ-PDF מצורף (לכבוד בקובץ) | **מוכן** (`invoice_attachments`, pdfminer) |
 | ניתוב + שליחה בפועל (forward) | **מוכן** — הרצה יבשה; `--apply` דורש Mail.Send |
 | סימון "✓ נשלח לסאמיט" בעת שליחה | **מוכן** — דורש Mail.ReadWrite ל-`--apply` |
 | אימות חזרה של "קיבלנו"/"אישור קבלת" | **מוכן** (`invoice_verify`, קריאה בלבד) |
@@ -107,6 +108,7 @@ python -m src.invoice_learn --config config.yaml --since 2025-01-01T00:00:00Z
 src/
   invoice_routing.py    - לוגיקה טהורה: חילוץ לקוח/ח.פ., בניית מפת ניתוב
   invoice_classifier.py - מחליט לאן חשבונית נכנסת הולכת (חברה/לקוח/לבדיקה)
+  invoice_attachments.py- חילוץ טקסט מ-PDF/קבצים מצורפים (pdfminer, נופל רך)
   invoice_processor.py  - מעביר ליעד + מסמן "✓ נשלח לסאמיט" (פעולות מוזרקות)
   invoice_verifier.py   - מתאים העברות מול אישורי "קיבלנו"/"אישור קבלת"
   invoice_graph.py      - Microsoft Graph: קריאת Sent/Inbox + forward + סימון
@@ -118,6 +120,9 @@ tests/
   test_invoice_classifier.py - בדיקות יחידה על הסיווג
   test_invoice_processor.py  - בדיקות יחידה על השליחה+הסימון
   test_invoice_verifier.py   - בדיקות יחידה על אימות הקליטה
+  test_invoice_attachments.py- בדיקות יחידה על חילוץ הקבצים
 ```
+
+בדיקות רצות אוטומטית ב-GitHub Actions (`.github/workflows/ci.yml`).
 
 מסמך הקמת ההרשאות מול Microsoft 365: ראה [`docs/microsoft365_setup.md`](docs/microsoft365_setup.md).

@@ -18,6 +18,7 @@ import yaml
 from rich.console import Console
 from rich.table import Table
 
+from src.invoice_attachments import gather_attachment_text
 from src.invoice_classifier import ClassifierConfig
 from src.invoice_graph import GraphClient
 from src.invoice_processor import (
@@ -67,6 +68,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--limit", type=int, default=200)
     parser.add_argument("--since", default=None, help="ISO date, e.g. 2026-06-01T00:00:00Z")
     parser.add_argument("--apply", action="store_true", help="actually forward + tag (default: dry run)")
+    parser.add_argument("--no-pdf", action="store_true", help="skip reading attachment text")
     args = parser.parse_args(argv)
 
     cfg = _load_config(args.config)
@@ -83,10 +85,17 @@ def main(argv: list[str] | None = None) -> None:
 
     mode = "[red]APPLY[/red]" if args.apply else "[cyan]DRY-RUN[/cyan]"
     console.print(f"מצב: {mode} — מושך Inbox…")
-    invoices = [
-        ProcessableInvoice(m["id"], m["subject"], m["body"])
-        for m in client.iter_inbox_messages(limit=args.limit, since=args.since)
-    ]
+    invoices = []
+    for m in client.iter_inbox_messages(limit=args.limit, since=args.since):
+        attachments_text = ""
+        if not args.no_pdf and m.get("hasAttachments"):
+            try:
+                attachments_text = gather_attachment_text(client.get_attachments(m["id"]))
+            except Exception:
+                attachments_text = ""  # never let one bad attachment stop the run
+        invoices.append(
+            ProcessableInvoice(m["id"], m["subject"], m["body"], attachments_text)
+        )
 
     results = processor.process_all(invoices)
     by_subject = {inv.message_id: inv.subject for inv in invoices}

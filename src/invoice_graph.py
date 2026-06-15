@@ -98,7 +98,7 @@ class GraphClient:
     def iter_inbox_messages(self, limit: int = 200, since: str | None = None):
         """Yield Inbox messages as dicts ``{id, subject, body}``, newest first."""
         params = {
-            "$select": "id,subject,body,from,sentDateTime",
+            "$select": "id,subject,body,from,hasAttachments,sentDateTime",
             "$orderby": "sentDateTime desc",
             "$top": "50",
         }
@@ -121,6 +121,7 @@ class GraphClient:
                     "subject": item.get("subject") or "",
                     "body": (item.get("body") or {}).get("content") or "",
                     "sender": sender,
+                    "hasAttachments": bool(item.get("hasAttachments")),
                 }
                 fetched += 1
                 if fetched >= limit:
@@ -163,6 +164,21 @@ class GraphClient:
             timeout=60,
         )
         patch.raise_for_status()
+
+    def get_attachments(self, message_id: str) -> list[dict]:
+        """Return file attachments as ``{name, contentBytes}`` (base64)."""
+        resp = requests.get(
+            f"{self.base}/messages/{message_id}/attachments",
+            headers=self._headers(),
+            params={"$select": "name,contentBytes"},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        out: list[dict] = []
+        for a in resp.json().get("value", []):
+            if a.get("contentBytes"):
+                out.append({"name": a.get("name", ""), "contentBytes": a["contentBytes"]})
+        return out
 
 
 def _flatten_recipients(item: dict) -> list[str]:
