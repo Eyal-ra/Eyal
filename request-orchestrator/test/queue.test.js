@@ -1,14 +1,16 @@
 // Verifies the core guarantee: with maxConcurrency=1, only one request is ever
 // "running" at a time, claims are FIFO, and enqueue is idempotent per id.
+process.env.QUEUE_FILE = "data/test-queue.json";
+
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { rmSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { DATA_DIR } from "../src/config.js";
+import { dirname } from "node:path";
 
-// clean slate
-rmSync(join(DATA_DIR, "approved-queue.json"), { force: true });
-mkdirSync(DATA_DIR, { recursive: true });
+// Dynamic import so QUEUE_FILE above is read by config before the queue loads.
+const { config, DATA_DIR } = await import("../src/config.js");
+rmSync(config.queueFile, { force: true });
+mkdirSync(dirname(config.queueFile), { recursive: true });
 
 const { enqueue, claimNext, markDone, all } = await import("../src/queue.js");
 

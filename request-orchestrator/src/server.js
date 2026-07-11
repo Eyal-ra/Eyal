@@ -2,8 +2,19 @@
 //   POST /approve  { id, title, body, system?, requester?, acceptance? }
 //   GET  /status   -> current queue with per-request state
 import { createServer } from "node:http";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { config } from "./config.js";
 import { enqueue, all } from "./queue.js";
+
+const PUBLIC_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
+
+function summarize(items) {
+  const by = { pending: 0, running: 0, done: 0, failed: 0 };
+  for (const i of items) if (by[i.status] !== undefined) by[i.status]++;
+  return by;
+}
 
 function send(res, code, obj) {
   const body = JSON.stringify(obj);
@@ -45,7 +56,17 @@ export function startServer() {
         return send(res, result.added ? 202 : 200, { ok: true, ...result });
       }
       if (req.method === "GET" && req.url === "/status") {
-        return send(res, 200, { ok: true, requests: all() });
+        const items = all();
+        return send(res, 200, { ok: true, summary: summarize(items), requests: items });
+      }
+      if (req.method === "GET" && (req.url === "/" || req.url === "/dashboard")) {
+        try {
+          const html = readFileSync(join(PUBLIC_DIR, "dashboard.html"));
+          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+          return res.end(html);
+        } catch {
+          return send(res, 404, { ok: false, error: "dashboard not found" });
+        }
       }
       send(res, 404, { ok: false, error: "not found" });
     } catch (err) {

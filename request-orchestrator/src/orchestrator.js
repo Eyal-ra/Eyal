@@ -5,8 +5,10 @@ import { config } from "./config.js";
 import { claimNext, markSession, markDone, markFailed } from "./queue.js";
 import { buildPrompt } from "./prompt.js";
 
+const ADAPTERS = new Set(["ccrApi", "localCli", "mock"]);
+
 async function loadAdapter() {
-  const name = config.adapter === "localCli" ? "localCli" : "ccrApi";
+  const name = ADAPTERS.has(config.adapter) ? config.adapter : "ccrApi";
   return import(`./adapters/${name}.js`);
 }
 
@@ -26,9 +28,14 @@ export async function tick() {
     markSession(req.id, { sessionId, sessionUrl });
     console.log(`[orchestrator] started ${req.id} -> session ${sessionId}`);
 
-    // Poll until the session reaches a terminal state.
+    // Poll until the session reaches a terminal state, or we hit the timeout.
     let state = "running";
+    const startedAt = Date.now();
     while (state === "running") {
+      if (Date.now() - startedAt > config.sessionTimeoutMs) {
+        state = "timeout";
+        break;
+      }
       await sleep(config.pollIntervalMs);
       state = await adapter.getStatus(sessionId);
     }

@@ -1,10 +1,10 @@
 // File-backed FIFO queue of approved requests. Persisted so a crash never loses
 // or double-runs a request. Single-writer (the orchestrator process) + atomic rename.
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from "node:fs";
-import { join } from "node:path";
-import { DATA_DIR } from "./config.js";
+import { dirname } from "node:path";
+import { config } from "./config.js";
 
-const QUEUE_FILE = join(DATA_DIR, "approved-queue.json");
+const QUEUE_FILE = config.queueFile;
 
 // status: "pending" -> "running" -> "done" | "failed"
 function load() {
@@ -17,7 +17,7 @@ function load() {
 }
 
 function save(items) {
-  mkdirSync(DATA_DIR, { recursive: true });
+  mkdirSync(dirname(QUEUE_FILE), { recursive: true });
   const tmp = QUEUE_FILE + ".tmp";
   writeFileSync(tmp, JSON.stringify(items, null, 2));
   renameSync(tmp, QUEUE_FILE); // atomic on same filesystem
