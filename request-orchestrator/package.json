@@ -1,0 +1,14 @@
+{
+  "name": "request-orchestrator",
+  "version": "0.1.0",
+  "description": "Approve a request in the requests system -> auto Claude Code Remote session, serialized (no overlap).",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
