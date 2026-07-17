@@ -23,7 +23,7 @@ function loadDotEnv() {
 loadDotEnv();
 
 export const config = {
-  adapter: process.env.ADAPTER || "ccrApi",
+  adapter: process.env.ADAPTER || "localCli",
   port: Number(process.env.PORT || 4500),
   maxConcurrency: Math.max(1, Number(process.env.MAX_CONCURRENCY || 1)),
   pollIntervalMs: Number(process.env.POLL_INTERVAL_MS || 15000),

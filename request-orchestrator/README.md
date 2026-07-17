@@ -65,8 +65,8 @@ await fetch("http://localhost:4500/approve", {
 
 | adapter | מתי | מה צריך |
 |---|---|---|
-| `ccrApi` (ברירת מחדל) | סשן בענן Claude Code Remote | `CCR_API_URL`, `CCR_API_TOKEN`, `CCR_ENV_ID` ב-.env |
-| `localCli` | הרצה מקומית על מכונת המשרד דרך `claude -p` | ה-CLI של Claude מותקן על המכונה |
+| `localCli` (ברירת מחדל) | הרצה מקומית על מכונת המשרד דרך `claude -p` | ה-CLI של Claude מותקן על המכונה — בלי סודות |
+| `ccrApi` | סשן בענן Claude Code Remote | `CCR_API_URL`, `CCR_API_TOKEN` ב-.env (`CCR_ENV_ID` כבר ממולא) |
 
 בחירת adapter דרך `ADAPTER=ccrApi` / `ADAPTER=localCli` ב-.env.
 
