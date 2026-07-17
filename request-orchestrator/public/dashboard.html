@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>לוח בקשות וסשנים — רייטר & ציון</title>
+<style>
+  :root {
+    --bg: #f4f6f9; --card: #ffffff; --ink: #1a1f2b; --muted: #6b7280;
+    --line: #e3e8ef; --navy: #1F3A5F; --blue: #2E5A88;
+    --pending: #6b7280; --running: #b8860b; --done: #2f7d32; --failed: #b03030;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f141b; --card:#161d27; --ink:#e6eaf0; --muted:#9aa4b2; --line:#232b36; --navy:#8fb3e0; --blue:#7aa0c8; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: Arial, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:var(--navy); color:#fff; padding:14px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+  header h1 { font-size:18px; margin:0; }
+  header .sub { font-size:12px; opacity:.85; }
+  .wrap { max-width:1100px; margin:0 auto; padding:18px; }
+  .tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px; }
+  @media (max-width:640px){ .tiles{ grid-template-columns:repeat(2,1fr);} }
+  .tile { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; text-align:center; }
+  .tile .n { font-size:26px; font-weight:700; }
+  .tile .l { font-size:12px; color:var(--muted); margin-top:2px; }
+  .tile.pending .n{color:var(--pending)} .tile.running .n{color:var(--running)}
+  .tile.done .n{color:var(--done)} .tile.failed .n{color:var(--failed)}
+  h2 { font-size:15px; color:var(--blue); margin:18px 0 8px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .scroll { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:13px; min-width:640px; }
+  th,td { padding:10px 12px; text-align:right; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { background:rgba(46,90,136,.08); color:var(--blue); font-weight:700; position:sticky; top:0; }
+  tr:last-child td { border-bottom:none; }
+  .pill { display:inline-block; padding:2px 10px; border-radius:999px; font-size:11px; font-weight:700; color:#fff; white-space:nowrap; }
+  .pill.pending{background:var(--pending)} .pill.running{background:var(--running)}
+  .pill.done{background:var(--done)} .pill.failed{background:var(--failed)}
+  a.cont { color:var(--blue); font-weight:700; text-decoration:none; }
+  a.cont:hover { text-decoration:underline; }
+  .empty { padding:26px; text-align:center; color:var(--muted); }
+  .foot { color:var(--muted); font-size:12px; margin-top:14px; text-align:center; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--done); margin-inline-start:6px; vertical-align:middle; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>לוח בקשות וסשנים פתוחים</h1>
+    <div class="sub">רייטר & ציון — חשבונאות אקטיבית · מתעדכן אוטומטית</div>
+  </div>
+  <div class="sub"><span class="dot" id="live"></span><span id="updated">טוען…</span></div>
+</header>
+<div class="wrap">
+  <div class="tiles">
+    <div class="tile pending"><div class="n" id="c-pending">0</div><div class="l">ממתין</div></div>
+    <div class="tile running"><div class="n" id="c-running">0</div><div class="l">רץ עכשיו</div></div>
+    <div class="tile done"><div class="n" id="c-done">0</div><div class="l">הושלם</div></div>
+    <div class="tile failed"><div class="n" id="c-failed">0</div><div class="l">נכשל</div></div>
+  </div>
+
+  <h2>בקשות בתור (לפי סדר עיבוד)</h2>
+  <div class="card scroll">
+    <table>
+      <thead><tr>
+        <th>#</th><th>כותרת</th><th>מערכת</th><th>מבקש</th><th>סטטוס</th><th>סשן</th>
+      </tr></thead>
+      <tbody id="rows"><tr><td colspan="6" class="empty">טוען…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="foot">
+    concurrency = 1 — בקשה אחת רצה בכל רגע, אף סשן לא מתלבש על אחר.
+  </div>
+</div>
+
+<script>
+  const STATUS_LABEL = { pending:"ממתין", running:"רץ", done:"הושלם", failed:"נכשל" };
+  function esc(s){ return String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+  async function refresh(){
+    try {
+      const r = await fetch("/status", { cache:"no-store" });
+      const data = await r.json();
+      const s = data.summary || {pending:0,running:0,done:0,failed:0};
+      for (const k of ["pending","running","done","failed"]) document.getElementById("c-"+k).textContent = s[k] || 0;
+
+      const items = (data.requests || []).slice().sort((a,b) => {
+        const order = { running:0, pending:1, failed:2, done:3 };
+        return (order[a.status]-order[b.status]) || String(a.enqueuedAt).localeCompare(String(b.enqueuedAt));
+      });
+      const tb = document.getElementById("rows");
+      if (!items.length){ tb.innerHTML = '<tr><td colspan="6" class="empty">אין בקשות עדיין — אישור בקשה במערכת יופיע כאן.</td></tr>'; }
+      else {
+        tb.innerHTML = items.map(it => {
+          const st = it.status || "pending";
+          const link = it.sessionUrl ? '<a class="cont" href="'+esc(it.sessionUrl)+'" target="_blank">המשך ↗</a>'
+                     : (it.error ? '<span title="'+esc(it.error)+'">—</span>' : "—");
+          return "<tr>"
+            + "<td>"+esc(it.id)+"</td>"
+            + "<td>"+esc(it.title)+"</td>"
+            + "<td>"+esc(it.system||"—")+"</td>"
+            + "<td>"+esc(it.requester||"—")+"</td>"
+            + '<td><span class="pill '+st+'">'+(STATUS_LABEL[st]||st)+"</span></td>"
+            + "<td>"+link+"</td>"
+            + "</tr>";
+        }).join("");
+      }
+      document.getElementById("updated").textContent = "עודכן " + new Date().toLocaleTimeString("he-IL");
+      document.getElementById("live").style.background = "var(--done)";
+    } catch (e){
+      document.getElementById("updated").textContent = "אין חיבור לשרת";
+      document.getElementById("live").style.background = "var(--failed)";
+    }
+  }
+  refresh();
+  setInterval(refresh, 5000);
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+[
+  {
+    "id": "REQ-001",
+    "title": "דוגמה — הוספת לוגו המשרד לדוח דיבידנד",
+    "body": "להוסיף את לוגו המשרד לראש דוח הדיבידנד במחשבון הדיבידנד.",
+    "system": "dividend-calc",
+    "requester": "אייל",
+    "acceptance": "הלוגו מופיע בראש הדוח המודפס ובתצוגה.",
+    "status": "pending",
+    "enqueuedAt": "2026-07-11T00:00:00.000Z",
+    "claimedAt": null,
+    "finishedAt": null,
+    "sessionId": null,
+    "sessionUrl": null,
+    "result": null,
+    "error": null
+  }
+]

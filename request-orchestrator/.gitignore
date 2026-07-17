@@ -1,0 +1,6 @@
+.env
+node_modules/
+data/approved-queue.json
+data/orchestrator.lock
+data/*.tmp
+data/test-*.json
