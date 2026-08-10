@@ -22,6 +22,8 @@ HEBREW_DAYS = {
     6: "יום ראשון",
 }
 
+DEFAULT_OPTION_TIMES = ["10:00", "15:00", "11:30", "16:30", "09:00"]
+
 
 @dataclass
 class Slot:
@@ -58,8 +60,12 @@ def load_busy_intervals(busy_file: Optional[str], tz: ZoneInfo) -> list[tuple[da
     path = Path(busy_file)
     if not path.exists():
         return []
+    try:
+        entries = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
     intervals = []
-    for entry in json.loads(path.read_text(encoding="utf-8")):
+    for entry in entries if isinstance(entries, list) else []:
         try:
             start = datetime.fromisoformat(entry["start"])
             end = datetime.fromisoformat(entry["end"])
@@ -73,29 +79,46 @@ def load_busy_intervals(busy_file: Optional[str], tz: ZoneInfo) -> list[tuple[da
 
 
 def _overlaps(slot: Slot, intervals: list[tuple[datetime, datetime]]) -> bool:
-    return any(slot.start < end and interval_start < slot.end for interval_start, end in intervals)
+    return any(slot.start < busy_end and busy_start < slot.end for busy_start, busy_end in intervals)
+
+
+def _slots_for_day(day: date, cfg: dict, tz: ZoneInfo, now: datetime, busy) -> list[Slot]:
+    scheduling = cfg.get("scheduling", {})
+    duration = timedelta(minutes=scheduling.get("meeting_minutes", 30))
+    found: list[Slot] = []
+    for raw_time in scheduling.get("option_times", DEFAULT_OPTION_TIMES):
+        try:
+            hour, minute = (int(part) for part in str(raw_time).split(":"))
+            start = datetime.combine(day, time(hour, minute), tzinfo=tz)
+        except ValueError:
+            continue
+        candidate = Slot(start=start, end=start + duration)
+        if candidate.start <= now or _overlaps(candidate, busy):
+            continue
+        found.append(candidate)
+        if len(found) == 2:
+            break
+    return found
 
 
 def build_slots(cfg: dict, today: Optional[date] = None, now: Optional[datetime] = None) -> tuple[list[Slot], date]:
-    """Return (two slots, target date). Target date is tomorrow, rolled forward
-    past non-working days (in Israel: Friday and Saturday by default)."""
+    """Return (two slots, the date they are on).
+
+    Starts at tomorrow, rolls past non-working days (in Israel: Friday and
+    Saturday by default), and rolls on again if fewer than two options are left
+    free on that day - so a fully booked tomorrow becomes the day after.
+    """
     scheduling = cfg.get("scheduling", {})
     tz = ZoneInfo(scheduling.get("timezone", "Asia/Jerusalem"))
     today = today or datetime.now(tz).date()
     now = now or datetime.now(tz)
-
-    target = next_working_day(today + timedelta(days=1), scheduling.get("skip_weekdays", [4, 5]))
-    duration = timedelta(minutes=scheduling.get("meeting_minutes", 30))
+    skip_weekdays = scheduling.get("skip_weekdays", [4, 5])
     busy = load_busy_intervals(scheduling.get("busy_file"), tz)
 
-    slots: list[Slot] = []
-    for raw_time in scheduling.get("option_times", ["10:00", "15:00", "11:30", "16:30", "09:00"]):
-        hour, minute = (int(part) for part in str(raw_time).split(":"))
-        start = datetime.combine(target, time(hour, minute), tzinfo=tz)
-        candidate = Slot(start=start, end=start + duration)
-        if candidate.start <= now or _overlaps(candidate, busy):
-            continue
-        slots.append(candidate)
+    target = next_working_day(today + timedelta(days=1), skip_weekdays)
+    for _ in range(scheduling.get("lookahead_days", 5)):
+        slots = _slots_for_day(target, cfg, tz, now, busy)
         if len(slots) == 2:
-            break
-    return slots, target
+            return slots, target
+        target = next_working_day(target + timedelta(days=1), skip_weekdays)
+    return [], target

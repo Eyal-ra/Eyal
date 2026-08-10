@@ -32,7 +32,10 @@ whatsapp:
   # token: "YOUR_BRIDGE_TOKEN"        # אופציונלי - נשלח כ-Authorization: Bearer
   # headers: {}                       # אופציונלי - כותרות נוספות לבריג'
   timeout_seconds: 30
+  retries: 3                # ניסיונות חוזרים על תקלות רשת / 5xx
+  send_delay_seconds: 8     # מרווח בין הודעות יוצאות - מקטין סיכון לחסימה
   proposals_path: "state/whatsapp_proposals.json"
+  log_path: "state/whatsapp_sent.log"   # לוג של כל הודעה שנשלחה
   # הנתיבים משתנים בין בריג'ים. הרץ `python -m src.whatsapp_agent probe` וקבע לפי מה שענה.
   endpoints:
     chats: "/chats"
@@ -54,10 +57,14 @@ scheduling:
   meeting_minutes: 30
   skip_weekdays: [4, 5]     # שישי ושבת (מספור Python: שני=0)
   option_times: ["10:00", "15:00", "11:30", "16:30", "09:00"]  # שתי הראשונות הפנויות יוצעו
+  lookahead_days: 5         # אם אין שתי אפשרויות פנויות - גלגל ליום הבא
   resend_after_hours: 48    # אל תשלח שוב הצעה לאותו לקוח בתוך X שעות
+  apology_after_hours: 12   # מעל X שעות המתנה - פתיחה שמתנצלת על העיכוב
   # busy_file: "state/busy.json"   # אופציונלי: [{"start": "2026-08-11T10:00", "end": "2026-08-11T11:00"}]
-  opening_line: "מצטער על העיכוב בתשובה. אשמח שנסגור פגישה קצרה."
+  opening_line: "אשמח שנסגור פגישה קצרה."
+  opening_line_late: "מצטער על העיכוב בתשובה. אשמח שנסגור פגישה קצרה."
   closing_line: "מה מתאים לך יותר? אפשר להשיב 1 או 2 ואשלח אישור."
+  no_fit_line: "אין בעיה. מתי נוח לך? תכתוב לי יום ושעה ואתאם."
   location_line: ""
   signature: "אייל רייטר, רו\"ח"
 

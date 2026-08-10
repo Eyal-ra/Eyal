@@ -80,7 +80,33 @@ python -m src.whatsapp_agent pending               # דוח: למי טרם הג�
 python -m src.whatsapp_agent schedule --dry-run    # להציג את ההודעות בלי לשלוח
 python -m src.whatsapp_agent schedule              # שליחה, עם אישור y/n לכל לקוח
 python -m src.whatsapp_agent replies --confirm     # מי ענה, מה בחר, ושליחת אישור
+python -m src.whatsapp_agent agenda                # מה נקבע דרך הסוכן למחר
 ```
+
+דגלים שימושיים:
+
+- `--only "דנה"` - לעבוד מול לקוח אחד (שם, טלפון או chat id).
+- `--limit 5` - להגביל את מספר הפניות בהרצה אחת.
+- `--json` (ב-`pending`) - פלט לעיבוד אוטומטי.
+- `--dry-run` - להציג בדיוק מה היה נשלח, בלי לשלוח.
+
+## מה הסוכן לא יעשה
+
+- לא ישלח בלי אישור שלך, אלא אם הרצת `--yes`.
+- לא ישלח הצעה שנייה למי שכבר קיבל הצעה ב-`resend_after_hours` האחרונות.
+- לא יציע שעות חדשות למי שכבר קבע פגישה, גם אם ימשיך לכתוב.
+- לא יענה לבד כשהתשובה לא חד-משמעית - הוא יסמן "טפל ידנית".
+- לא ישלח רצף הודעות מהיר: יש השהיה של `send_delay_seconds` (עם ג'יטר) בין
+  הודעות, כדי להקטין סיכון לחסימה של המספר.
+
+כל הודעה שנשלחת נרשמת ב-`state/whatsapp_sent.log` (שורת JSON להודעה),
+וכל ההצעות והתשובות נשמרות ב-`state/whatsapp_proposals.json`.
+
+## איך נקראת התשובה של הלקוח
+
+`replies` מזהה `1`/`2`, `א`/`ב`, "אפשרות 2", וגם שעה או חלק מהיום בתשובה קצרה
+("בעשר", "ב-15:00", "בבוקר"). תשובה שלילית ("שתיהן לא מתאימות") מקבלת שאלה חוזרת
+מתי כן נוח. כל השאר מסומן לטיפול ידני - עדיף שהסוכן ישתוק מלנחש.
 
 ## הגדרה ראשונה
 
@@ -103,7 +129,12 @@ python -m src.whatsapp_agent replies --confirm     # מי ענה, מה בחר, �
 - `option_times` - רשימת שעות מועדפות. שתי הראשונות שפנויות הן מה שיוצע.
 - `skip_weekdays` - ברירת מחדל שישי ושבת, ולכן "מחר" של יום חמישי מתגלגל ליום ראשון.
 - `busy_file` - אופציונלי, קובץ JSON של פגישות תפוסות כדי לא להציע שעה שכבר תפוסה.
+- `lookahead_days` - אם אין שתי אפשרויות פנויות מחר, ההצעות מתגלגלות ליום שאחריו
+  (ההודעה תמיד מציינת את התאריך המדויק).
 - `resend_after_hours` - לא נשלחת הצעה חוזרת לאותו לקוח בתוך X שעות.
+- `apology_after_hours` - מעל כמה שעות המתנה ההודעה נפתחת בהתנצלות על העיכוב.
+- טקסטים: `opening_line`, `opening_line_late`, `closing_line`, `no_fit_line`,
+  `location_line`, `signature`.
 
 ## מבנה הקוד
 
@@ -117,16 +148,22 @@ src/
   diff_display.py    - הצגת השוואה ובקשת אישור
   state_store.py     - שמירת היסטוריית הגשות שכבר טופלו
 
-  whatsapp_agent.py  - CLI של סוכן הווטסאפ (pending / schedule / replies / probe)
-  whatsapp_client.py - קליינט HTTP לבריג' הווטסאפ
+  whatsapp_agent.py  - CLI של סוכן הווטסאפ (pending / schedule / replies / agenda / probe)
+  whatsapp_client.py - קליינט HTTP לבריג' הווטסאפ (retry + קצב שליחה + probe)
   unanswered.py      - הלוגיקה של "למי טרם הגבתי"
   slots.py           - בניית שתי אפשרויות הפגישה למחר
-  templates.py       - נוסח ההודעה בעברית וזיהוי התשובה (1/2)
-  proposal_store.py  - אילו הצעות כבר נשלחו ומה נענה
+  templates.py       - נוסח ההודעה בעברית וזיהוי התשובה
+  proposal_store.py  - אילו הצעות כבר נשלחו, מי ענה ומה נקבע
+  audit_log.py       - לוג של כל הודעה שנשלחה
 ```
 
 ## טסטים
 
 ```bash
+pip install -r requirements-dev.txt
 pytest -q
 ```
+
+הטסטים כוללים שרת HTTP שמדמה את הבריג', כך שכל המסלול -
+`pending` → `schedule` → `replies` → `agenda` - נבדק מקצה לקצה בלי ווטסאפ אמיתי.
+אותם טסטים רצים ב-GitHub Actions על כל דחיפה (`.github/workflows/ci.yml`).
