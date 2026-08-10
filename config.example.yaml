@@ -26,6 +26,41 @@ ravgonit:
 state:
   path: "state/seen_submissions.json"
 
+# --- סוכן ווטסאפ: למי טרם הגבתי + תיאום פגישות למחר ---
+whatsapp:
+  base_url: "http://eyal:3980/"
+  # token: "YOUR_BRIDGE_TOKEN"        # אופציונלי - נשלח כ-Authorization: Bearer
+  # headers: {}                       # אופציונלי - כותרות נוספות לבריג'
+  timeout_seconds: 30
+  proposals_path: "state/whatsapp_proposals.json"
+  # הנתיבים משתנים בין בריג'ים. הרץ `python -m src.whatsapp_agent probe` וקבע לפי מה שענה.
+  endpoints:
+    chats: "/chats"
+    messages: "/chats/{chat_id}/messages"
+    send: "/send-message"
+  send_chat_field: "chatId"
+  send_text_field: "message"
+
+scan:
+  chat_limit: 50            # כמה שיחות אחרונות לסרוק
+  message_limit: 30         # כמה הודעות אחרונות לקרוא בכל שיחה
+  min_waiting_minutes: 30   # אל תסמן כ"לא הגבתי" לפני שעברו X דקות
+  max_age_days: 14          # התעלם מהודעות ישנות מ-X ימים
+  include_groups: false
+  skip_chat_ids: []         # למשל: ["972501234567@c.us"]
+
+scheduling:
+  timezone: "Asia/Jerusalem"
+  meeting_minutes: 30
+  skip_weekdays: [4, 5]     # שישי ושבת (מספור Python: שני=0)
+  option_times: ["10:00", "15:00", "11:30", "16:30", "09:00"]  # שתי הראשונות הפנויות יוצעו
+  resend_after_hours: 48    # אל תשלח שוב הצעה לאותו לקוח בתוך X שעות
+  # busy_file: "state/busy.json"   # אופציונלי: [{"start": "2026-08-11T10:00", "end": "2026-08-11T11:00"}]
+  opening_line: "מצטער על העיכוב בתשובה. אשמח שנסגור פגישה קצרה."
+  closing_line: "מה מתאים לך יותר? אפשר להשיב 1 או 2 ואשלח אישור."
+  location_line: ""
+  signature: "אייל רייטר, רו\"ח"
+
 matching:
   require_phone_or_id: true
   fuzzy_name_threshold: 0.85
