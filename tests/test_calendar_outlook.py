@@ -5,6 +5,7 @@ import pytest
 
 from src.calendar_outlook import (
     _com_failure_hint,
+    _walk,
     OutlookGraph,
     OutlookLocal,
     parse_schedule,
@@ -217,3 +218,79 @@ def test_missing_outlook_points_at_the_graph_provider():
 
 def test_an_unknown_com_error_falls_back_to_the_general_advice():
     assert "Outlook" in _com_failure_hint(Exception("something else entirely"))
+
+
+# --- the locale-sensitive Restrict filter --------------------------------
+
+class FakeItems:
+    """Outlook's Items collection: Restrict returns matches only when the filter
+    was written in the format this machine's locale expects."""
+
+    def __init__(self, appointments, accepted_format="%d/%m/%Y %H:%M"):
+        self.appointments = appointments
+        self.accepted = accepted_format
+        self.IncludeRecurrences = False
+        self.filters_tried = []
+        self._cursor = 0
+
+    def Sort(self, _field):
+        pass
+
+    def Restrict(self, window):
+        self.filters_tried.append(window)
+        expected = datetime(2026, 8, 13, 0, 0).strftime(self.accepted)
+        return FakeCollection(self.appointments if expected in window else [])
+
+
+class FakeCollection:
+    def __init__(self, appointments):
+        self.appointments = list(appointments)
+        self._cursor = 0
+
+    def GetFirst(self):
+        self._cursor = 0
+        return self.GetNext()
+
+    def GetNext(self):
+        if self._cursor >= len(self.appointments):
+            return None
+        item = self.appointments[self._cursor]
+        self._cursor += 1
+        return item
+
+
+def test_a_non_us_locale_still_finds_the_appointments():
+    """A dd/MM machine silently matched nothing before - which looked like a
+    completely free day rather than a failure."""
+    outlook = OutlookLocal({})
+    appointments = [FakeAppointment(datetime(2026, 8, 12, 9, 0, tzinfo=TZ),
+                                    datetime(2026, 8, 12, 9, 30, tzinfo=TZ))]
+    items = FakeItems(appointments, accepted_format="%d/%m/%Y %H:%M")
+    outlook._calendar_folder = lambda: type("F", (), {"Items": items})()
+
+    busy = outlook.busy(datetime(2026, 8, 12, tzinfo=TZ), datetime(2026, 8, 13, tzinfo=TZ), TZ)
+    assert [f"{start:%H:%M}" for start, _ in busy] == ["09:00"]
+    assert len(items.filters_tried) > 1        # it had to try more than the US shape
+
+
+def test_a_us_locale_is_still_matched_first():
+    outlook = OutlookLocal({})
+    appointments = [FakeAppointment(datetime(2026, 8, 12, 9, 0, tzinfo=TZ),
+                                    datetime(2026, 8, 12, 9, 30, tzinfo=TZ))]
+    items = FakeItems(appointments, accepted_format="%m/%d/%Y %I:%M %p")
+    outlook._calendar_folder = lambda: type("F", (), {"Items": items})()
+
+    assert len(outlook.busy(datetime(2026, 8, 12, tzinfo=TZ), datetime(2026, 8, 13, tzinfo=TZ), TZ)) == 1
+    assert len(items.filters_tried) == 1
+
+
+def test_a_genuinely_empty_day_returns_nothing():
+    outlook = OutlookLocal({})
+    items = FakeItems([], accepted_format="%d/%m/%Y %H:%M")
+    outlook._calendar_folder = lambda: type("F", (), {"Items": items})()
+    assert outlook.busy(datetime(2026, 8, 12, tzinfo=TZ), datetime(2026, 8, 13, tzinfo=TZ), TZ) == []
+
+
+def test_walk_handles_both_com_collections_and_plain_lists():
+    assert list(_walk([1, 2, 3])) == [1, 2, 3]
+    assert list(_walk(FakeCollection([1, 2, 3]))) == [1, 2, 3]

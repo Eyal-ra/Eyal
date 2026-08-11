@@ -27,6 +27,12 @@ GRAPH_ROOT = "https://graph.microsoft.com/v1.0"
 GRAPH_SCOPES = ["Calendars.Read"]
 GRAPH_WRITE_SCOPES = ["Calendars.ReadWrite"]
 
+# Outlook reads these using the machine's locale, so the right one varies.
+DATE_FORMATS = ("%m/%d/%Y %I:%M %p", "%d/%m/%Y %H:%M", "%d/%m/%Y %I:%M %p", "%Y-%m-%d %H:%M")
+
+# With IncludeRecurrences a series expands indefinitely; never walk forever.
+MAX_APPOINTMENTS = 5000
+
 COM_HINT = "חסרה ספריית pywin32. התקן: python -m pip install pywin32"
 MSAL_HINT = "חסרות ספריות Graph. התקן: python -m pip install msal requests"
 
@@ -43,6 +49,27 @@ def _com_datetime(value, tz: ZoneInfo) -> datetime:
         return value.astimezone(tz)
     return datetime(value.year, value.month, value.day,
                     value.hour, value.minute, getattr(value, "second", 0), tzinfo=tz)
+
+
+def _walk(collection):
+    """Outlook collections are walked with GetFirst/GetNext; plain iteration on a
+    recurring collection is unreliable. Falls back to iteration for anything else."""
+    get_first = getattr(collection, "GetFirst", None)
+    if get_first is None:
+        yield from collection
+        return
+    item = get_first()
+    seen = 0
+    while item is not None and seen < MAX_APPOINTMENTS:
+        yield item
+        seen += 1
+        item = collection.GetNext()
+
+
+def _has_any(collection) -> bool:
+    for _ in _walk(collection):
+        return True
+    return False
 
 
 def _com_failure_hint(exc: Exception) -> str:
@@ -87,20 +114,34 @@ class OutlookLocal:
         items = self._calendar_folder().Items
         items.IncludeRecurrences = True          # must be set before Sort, or series are missed
         items.Sort("[Start]")
-        # Outlook's Restrict only understands US-formatted local times.
-        window = "[Start] <= '{}' AND [End] >= '{}'".format(
-            end.strftime("%m/%d/%Y %I:%M %p"), start.strftime("%m/%d/%Y %I:%M %p")
-        )
-        try:
-            found = items.Restrict(window)
-        except Exception as exc:
-            raise CalendarError(f"קריאת היומן מ-Outlook נכשלה: {exc}") from exc
+        found = self._restrict(items, start, end)
         return self._to_intervals(found, start, end, tz)
+
+    def _restrict(self, items, start: datetime, end: datetime):
+        """Outlook parses the dates in a Restrict filter using the machine's own
+        locale. A US-shaped filter on a dd/MM machine does not fail - it quietly
+        matches nothing, which reads as a completely free day. So try the formats
+        and keep the first that actually returns something."""
+        last_error = None
+        for date_format in DATE_FORMATS:
+            window = "[Start] <= '{}' AND [End] >= '{}'".format(
+                end.strftime(date_format), start.strftime(date_format)
+            )
+            try:
+                found = items.Restrict(window)
+            except Exception as exc:
+                last_error = exc
+                continue
+            if _has_any(found):
+                return found
+        if last_error is not None and not DATE_FORMATS:
+            raise CalendarError(f"קריאת היומן מ-Outlook נכשלה: {last_error}")
+        return []                                # a genuinely empty window
 
     def _to_intervals(self, appointments, start: datetime, end: datetime, tz: ZoneInfo) -> list[Interval]:
         allowed = set(BUSY_STATUSES) | ({TENTATIVE_STATUS} if self.include_tentative else set())
         intervals: list[Interval] = []
-        for appointment in appointments:
+        for appointment in _walk(appointments):
             try:
                 status = int(getattr(appointment, "BusyStatus", 2))
                 if status not in allowed:
