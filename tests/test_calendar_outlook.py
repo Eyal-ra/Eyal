@@ -294,3 +294,15 @@ def test_a_genuinely_empty_day_returns_nothing():
 def test_walk_handles_both_com_collections_and_plain_lists():
     assert list(_walk([1, 2, 3])) == [1, 2, 3]
     assert list(_walk(FakeCollection([1, 2, 3]))) == [1, 2, 3]
+
+
+def test_a_com_time_marked_utc_is_still_read_as_local():
+    """pywintypes hands back local wall time carrying a UTC tzinfo. Trusting that
+    marker moved every appointment by the local offset - three hours in Israel."""
+    outlook = OutlookLocal({})
+    day = datetime(2026, 8, 12, 0, 0, tzinfo=TZ)
+    # Outlook means 09:00 in Israel; pywin32 presents it as 09:00 tagged UTC.
+    mislabelled = FakeAppointment(datetime(2026, 8, 12, 9, 0, tzinfo=ZoneInfo("UTC")),
+                                  datetime(2026, 8, 12, 9, 30, tzinfo=ZoneInfo("UTC")))
+    (start, end), = outlook._to_intervals([mislabelled], day, day + timedelta(days=1), TZ)
+    assert f"{start:%H:%M}-{end:%H:%M}" == "09:00-09:30"

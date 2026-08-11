@@ -42,11 +42,10 @@ def _aware(value: datetime, tz: ZoneInfo) -> datetime:
 
 
 def _com_datetime(value, tz: ZoneInfo) -> datetime:
-    """A pywintypes datetime is datetime-like, but it may be UTC-aware or a naive
-    local wall time depending on the pywin32 version. Round-tripping through a
-    timestamp would silently shift the hour, so read the fields directly."""
-    if getattr(value, "tzinfo", None) is not None:
-        return value.astimezone(tz)
+    """Outlook reports an appointment's Start in local time. pywintypes hands it
+    over carrying a UTC tzinfo anyway, so honouring that marker shifts every
+    appointment by the offset - three hours in Israel. Read the wall-clock
+    fields and call them local, which is what Outlook meant."""
     return datetime(value.year, value.month, value.day,
                     value.hour, value.minute, getattr(value, "second", 0), tzinfo=tz)
 
