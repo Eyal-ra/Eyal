@@ -1,14 +1,16 @@
 """
 Where the agent learns which hours are already taken.
 
-Three providers, chosen by `scheduling.calendar.provider` in config.yaml:
+Providers, chosen by `scheduling.calendar.provider` in config.yaml:
 
-  none    - no calendar; every configured option time counts as free
-  file    - a local JSON file of busy blocks (no credentials needed)
-  google  - Google Calendar free/busy for the real calendar
+  none     - no calendar; every configured option time counts as free
+  file     - a local JSON file of busy blocks (no credentials needed)
+  outlook  - the Outlook desktop app on this machine, over COM
+  graph    - Microsoft 365 over Microsoft Graph
+  google   - Google Calendar free/busy
 
-The Google libraries are imported lazily, so the agent runs without them
-installed as long as the google provider is not selected.
+Every provider's libraries are imported lazily, so the agent runs without them
+installed as long as that provider is not selected.
 """
 
 import json
@@ -219,8 +221,25 @@ def resolve_provider(cfg: dict) -> str:
     return "file" if scheduling.get("busy_file") else "none"
 
 
+def calendar_backend(cfg: dict):
+    """The provider object that can read busy hours and create events, or None
+    for the providers that cannot (`none` and `file`)."""
+    provider = resolve_provider(cfg)
+    config = calendar_config(cfg)
+    if provider == "google":
+        return GoogleCalendar(config)
+    if provider == "outlook":
+        from .calendar_outlook import OutlookLocal
+        return OutlookLocal(config)
+    if provider == "graph":
+        from .calendar_outlook import OutlookGraph
+        return OutlookGraph(config)
+    return None
+
+
 def google_calendar(cfg: dict) -> Optional[GoogleCalendar]:
-    return GoogleCalendar(calendar_config(cfg)) if resolve_provider(cfg) == "google" else None
+    backend = calendar_backend(cfg)
+    return backend if isinstance(backend, GoogleCalendar) else None
 
 
 def load_busy(cfg: dict, tz: ZoneInfo, start: datetime, end: datetime) -> list[Interval]:
@@ -231,6 +250,9 @@ def load_busy(cfg: dict, tz: ZoneInfo, start: datetime, end: datetime) -> list[I
     if provider == "file":
         busy_file = calendar_config(cfg).get("busy_file") or cfg.get("scheduling", {}).get("busy_file")
         return load_busy_intervals(busy_file, tz)
-    if provider == "google":
-        return GoogleCalendar(calendar_config(cfg)).busy(start, end, tz)
-    raise CalendarError(f"provider לא מוכר ב-config: {provider!r} (none / file / google)")
+    backend = calendar_backend(cfg)
+    if backend is None:
+        raise CalendarError(
+            f"provider לא מוכר ב-config: {provider!r} (none / file / outlook / graph / google)"
+        )
+    return backend.busy(start, end, tz)

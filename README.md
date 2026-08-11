@@ -138,7 +138,51 @@ WAHA, Evolution) דורשים שם session בתוך הנתיב; הגדר אות�
 |----------|-------------|---------|
 | `none` | כל השעות ב-`option_times` נחשבות פנויות | כלום |
 | `file` | קובץ JSON מקומי של שעות תפוסות | קובץ `busy_file` |
-| `google` | free/busy אמיתי מ-Google Calendar | הרשאה חד-פעמית |
+| `outlook` | האאוטלוק שמותקן במחשב הזה, דרך COM | Outlook מותקן ומחובר |
+| `graph` | Microsoft 365 דרך הרשת | רישום אפליקציה ב-Azure |
+| `google` | free/busy מ-Google Calendar | הרשאה חד-פעמית |
+
+### הפעלת Outlook (הדרך הקצרה)
+
+אם Outlook מותקן ומחובר במחשב שמריץ את הסוכן, זה כל מה שצריך:
+
+```yaml
+scheduling:
+  calendar:
+    provider: "outlook"
+    include_tentative: true
+```
+
+```bash
+python -m src.whatsapp_agent calendar
+```
+
+בלי רישום, בלי Azure, בלי הרשאות מנהל. הסוכן קורא את היומן הראשי של הפרופיל,
+מדלג על אירועים שמסומנים "פנוי" (למשל "X לא במשרד"), ומתייחס ל"אולי" כתפוס
+(`include_tentative: false` כדי לשנות).
+
+### הפעלת Microsoft Graph (להרצה מרחוק או מתוזמנת)
+
+עובד גם כשאאוטלוק סגור ומכל מחשב, אבל דורש רישום חד-פעמי:
+
+```bash
+pip install -r requirements-outlook.txt
+```
+
+ב-Azure Portal → App registrations → New registration → Public client, הוסף
+הרשאת **Calendars.Read** (או `Calendars.ReadWrite` אם רוצים יצירת אירועים), והעתק
+את ה-Application ID:
+
+```yaml
+scheduling:
+  calendar:
+    provider: "graph"
+    client_id: "APP_ID_FROM_AZURE"
+    tenant_id: "cpateam.co.il"
+    calendar_id: "eyal@cpateam.co.il"
+```
+
+בהרצה הראשונה יודפס קוד להזנה ב-microsoft.com/devicelogin, והטוקן נשמר.
 
 ### הפעלת Google Calendar
 

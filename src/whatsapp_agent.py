@@ -17,7 +17,8 @@ from pathlib import Path
 from typing import Optional
 
 from .audit_log import AuditLog
-from .calendar_source import CalendarError, google_calendar, load_busy, resolve_provider
+from .calendar_outlook import working_hours_gaps
+from .calendar_source import CalendarError, calendar_backend, load_busy, resolve_provider
 from .main import load_config
 from .proposal_store import ProposalStore
 from .slots import Slot, build_slots
@@ -63,8 +64,8 @@ class Agent:
 
     def book_in_calendar(self, name: str, phone: str, slot: Slot) -> Optional[str]:
         """Write the agreed meeting into Google Calendar, when that is turned on."""
-        calendar = google_calendar(self.cfg)
-        if calendar is None or not calendar.create_events:
+        calendar = calendar_backend(self.cfg)
+        if calendar is None or not getattr(calendar, "create_events", False):
             return None
         summary = self.scheduling.get("event_title", "פגישה - {name}").format(name=name)
         return calendar.create_event(summary, slot.start, slot.end, description=f"תואם בווטסאפ. טלפון: {phone}")
@@ -319,14 +320,23 @@ def cmd_calendar(agent: Agent, args) -> int:
     for busy_start, busy_end in sorted(busy):
         print(f"  {busy_start:%d/%m %H:%M} - {busy_end:%H:%M}")
 
+    work = agent.scheduling
+    day_start = datetime.combine(today + timedelta(days=1), time(8, 0), tzinfo=agent.tz)
+    day_end = datetime.combine(today + timedelta(days=1), time(19, 0), tzinfo=agent.tz)
+    gaps = working_hours_gaps(busy, day_start, day_end, agent.meeting_duration())
+    if gaps:
+        print(f"\nחלונות פנויים מחר ({day_start:%d/%m}, {work.get('meeting_minutes', 30)} דק' ומעלה):")
+        for gap_start, gap_end in gaps:
+            print(f"  {gap_start:%H:%M} - {gap_end:%H:%M}")
+
     slots, target = build_slots(agent.cfg, today=today, now=agent.now_local, busy=busy)
     if slots:
         print(f"\nמה שיוצע ללקוחות ({target:%d/%m}): " + " | ".join(slot.time_range for slot in slots))
     else:
         print("\nלא נמצאו שתי אפשרויות פנויות - הרחב את option_times או את lookahead_days.")
 
-    calendar = google_calendar(agent.cfg)
-    if calendar and calendar.create_events:
+    calendar = calendar_backend(agent.cfg)
+    if calendar and getattr(calendar, "create_events", False):
         print("יצירת אירועים ביומן: פעילה (אירוע ייווצר כשלקוח מאשר שעה)")
     elif calendar:
         print("יצירת אירועים ביומן: כבויה (calendar.create_events: true כדי להפעיל)")

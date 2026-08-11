@@ -63,9 +63,17 @@ scheduling:
   apology_after_hours: 12   # מעל X שעות המתנה - פתיחה שמתנצלת על העיכוב
   event_title: "פגישה - {name}"   # כותרת האירוע שנוצר ביומן
 
-  # מאיפה יודעים אילו שעות תפוסות: none / file / google
+  # מאיפה יודעים אילו שעות תפוסות: none / file / outlook / graph / google
   calendar:
     provider: "none"
+    # include_tentative: true       # להתייחס ל"אולי" ביומן כתפוס (מומלץ)
+    # --- provider: outlook (האאוטלוק שמותקן במחשב הזה - בלי שום רישום) ---
+    # calendar_name: ""             # ריק = היומן הראשי
+    # --- provider: graph (Microsoft 365 דרך הרשת) ---
+    # client_id: "APP_ID_FROM_AZURE"
+    # tenant_id: "cpateam.co.il"
+    # calendar_id: "eyal@cpateam.co.il"
+    # token_cache: "state/graph_token.json"
     # --- provider: file ---
     # busy_file: "state/busy.json"   # [{"start": "2026-08-11T10:00", "end": "2026-08-11T11:00"}]
     # --- provider: google ---
