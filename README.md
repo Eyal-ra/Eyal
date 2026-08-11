@@ -30,6 +30,7 @@
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
+# ב-Windows נדרש גם tzdata - הוא כלול ב-requirements.txt
 
 copy config.example.yaml config.yaml
 # ערוך את config.yaml והכנס את הפרטים שלך

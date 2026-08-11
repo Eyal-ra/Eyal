@@ -12,6 +12,7 @@ from src.calendar_source import (
     resolve_provider,
 )
 from src.slots import build_slots
+from src.tz import TimezoneMissing, get_timezone
 
 TZ = ZoneInfo("Asia/Jerusalem")
 CALENDAR_ID = "eyal@cpateam.co.il"
@@ -195,3 +196,15 @@ def test_busy_hours_from_the_calendar_change_what_is_offered():
                                 now=datetime(2026, 8, 10, 9, 0, tzinfo=TZ), busy=busy)
     assert target == date(2026, 8, 11)
     assert [slot.time_range for slot in slots] == ["15:00–15:30", "16:30–17:00"]
+
+
+# --- timezone lookup ----------------------------------------------------
+
+def test_get_timezone_returns_a_real_zone():
+    assert str(get_timezone("Asia/Jerusalem")) == "Asia/Jerusalem"
+
+
+def test_missing_timezone_explains_how_to_fix_it():
+    with pytest.raises(TimezoneMissing) as excinfo:
+        get_timezone("Mars/Olympus_Mons")
+    assert "pip install tzdata" in str(excinfo.value)

@@ -15,7 +15,6 @@ import sys
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Optional
-from zoneinfo import ZoneInfo
 
 from .audit_log import AuditLog
 from .calendar_source import CalendarError, google_calendar, load_busy, resolve_provider
@@ -31,6 +30,7 @@ from .templates import (
     render_no_fit,
     render_proposal,
 )
+from .tz import TimezoneMissing, get_timezone
 from .unanswered import PendingChat, ScanResult, scan_pending
 from .whatsapp_client import WhatsAppClient, WhatsAppError
 
@@ -42,7 +42,7 @@ class Agent:
         self.cfg = cfg
         self.client = client
         self.scheduling = cfg.get("scheduling", {})
-        self.tz = ZoneInfo(self.scheduling.get("timezone", "Asia/Jerusalem"))
+        self.tz = get_timezone(self.scheduling.get("timezone", "Asia/Jerusalem"))
         self.store = ProposalStore(cfg["whatsapp"]["proposals_path"])
         self.audit = AuditLog(cfg["whatsapp"].get("log_path"))
 
@@ -416,7 +416,11 @@ def main(argv: list[str] | None = None) -> int:
     cfg = load_config(args.config)
     if "whatsapp" not in cfg:
         sys.exit("חסר סעיף whatsapp ב-config.yaml. ראה config.example.yaml.")
-    agent = Agent(cfg, WhatsAppClient(cfg["whatsapp"]))
+    try:
+        agent = Agent(cfg, WhatsAppClient(cfg["whatsapp"]))
+    except TimezoneMissing as exc:
+        print(exc)
+        return 1
     try:
         return args.func(agent, args)
     except WhatsAppError as exc:

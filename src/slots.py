@@ -11,6 +11,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from .calendar_source import Interval, load_busy
+from .tz import get_timezone
 
 HEBREW_DAYS = {
     0: "יום שני",
@@ -91,7 +92,7 @@ def build_slots(
     `busy` is read from the configured calendar provider unless it is passed in.
     """
     scheduling = cfg.get("scheduling", {})
-    tz = ZoneInfo(scheduling.get("timezone", "Asia/Jerusalem"))
+    tz = get_timezone(scheduling.get("timezone", "Asia/Jerusalem"))
     today = today or datetime.now(tz).date()
     now = now or datetime.now(tz)
     skip_weekdays = scheduling.get("skip_weekdays", [4, 5])
