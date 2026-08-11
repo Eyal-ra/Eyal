@@ -371,6 +371,13 @@ def test_calendar_command_shows_busy_blocks_and_the_resulting_offer(bridge, conf
     assert "15:00–15:30 | 16:30–17:00" in out   # the busy hour is not offered
 
 
+def test_a_config_saved_with_a_windows_bom_still_loads(bridge, config_file, capsys):
+    text = config_file.read_text(encoding="utf-8")
+    config_file.write_bytes(b"\xef\xbb\xbf" + text.encode("utf-8"))   # what PowerShell writes
+    assert run(config_file, "calendar") == 0
+    assert "מקור היומן" in capsys.readouterr().out
+
+
 def test_agenda_is_empty_before_anything_is_booked(bridge, config_file, capsys):
     assert run(config_file, "agenda") == 0
     assert "אין פגישות" in capsys.readouterr().out

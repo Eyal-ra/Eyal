@@ -15,7 +15,9 @@ from .state_store import StateStore
 def load_config(path: Path) -> dict:
     if not path.exists():
         sys.exit(f"קובץ קונפיגורציה לא נמצא: {path}. העתק את config.example.yaml ל-config.yaml.")
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
+    # utf-8-sig, not utf-8: editors and PowerShell on Windows often save a BOM,
+    # and the YAML parser refuses to start on one.
+    return yaml.safe_load(path.read_text(encoding="utf-8-sig"))
 
 
 def process_submission(submission, powerlink: PowerlinkClient, ravgonit: RavgonitGUI, dry_run: bool) -> str:
