@@ -1,0 +1,8 @@
+# Dependencies for running the tests. The Windows-only pywinauto is left out on
+# purpose - the Ravgonit GUI automation is not exercised by the test suite.
+requests>=2.31.0
+PyYAML>=6.0
+rich>=13.7.0
+pytest>=8.0.0
+pyflakes>=3.2.0
+tzdata>=2024.1; sys_platform == "win32"   # zoneinfo has no tz database on Windows

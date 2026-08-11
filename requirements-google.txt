@@ -1,0 +1,5 @@
+# Only needed when scheduling.calendar.provider is "google".
+# The agent imports these lazily, so it runs fine without them otherwise.
+google-api-python-client>=2.100.0
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0

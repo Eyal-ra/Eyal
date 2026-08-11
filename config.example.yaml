@@ -26,6 +26,76 @@ ravgonit:
 state:
   path: "state/seen_submissions.json"
 
+# --- סוכן ווטסאפ: למי טרם הגבתי + תיאום פגישות למחר ---
+whatsapp:
+  base_url: "http://eyal:3980/"
+  # token: "YOUR_BRIDGE_TOKEN"        # אופציונלי - נשלח כ-Authorization: Bearer
+  # headers: {}                       # אופציונלי - כותרות נוספות לבריג'
+  timeout_seconds: 30
+  session: "default"        # שם ה-session/instance, אם הבריג' דורש אותו בנתיב
+  retries: 3                # ניסיונות חוזרים על תקלות רשת / 5xx
+  send_delay_seconds: 8     # מרווח בין הודעות יוצאות - מקטין סיכון לחסימה
+  proposals_path: "state/whatsapp_proposals.json"
+  log_path: "state/whatsapp_sent.log"   # לוג של כל הודעה שנשלחה
+  # הנתיבים משתנים בין בריג'ים. הרץ `python -m src.whatsapp_agent probe` וקבע לפי מה שענה.
+  endpoints:                # אפשר להשתמש ב-{session} וב-{chat_id} בתוך הנתיב
+    chats: "/chats"
+    messages: "/chats/{chat_id}/messages"
+    send: "/send-message"
+  send_chat_field: "chatId"
+  send_text_field: "message"
+  send_chat_format: "jid"   # jid = 9725...@c.us  |  phone = 9725... (wppconnect)
+  # send_extra:               # שדות קבועים נוספים בגוף השליחה (WAHA דורש session)
+  #   session: "{session}"
+
+scan:
+  chat_limit: 50            # כמה שיחות אחרונות לסרוק
+  message_limit: 30         # כמה הודעות אחרונות לקרוא בכל שיחה
+  min_waiting_minutes: 30   # אל תסמן כ"לא הגבתי" לפני שעברו X דקות
+  max_age_days: 14          # התעלם מהודעות ישנות מ-X ימים
+  include_groups: false
+  skip_chat_ids: []         # למשל: ["972501234567@c.us"]
+
+scheduling:
+  timezone: "Asia/Jerusalem"
+  meeting_minutes: 30
+  skip_weekdays: [4, 5]     # שישי ושבת (מספור Python: שני=0)
+  option_times: ["10:00", "15:00", "11:30", "16:30", "09:00"]  # שתי הראשונות הפנויות יוצעו
+  lookahead_days: 5         # אם אין שתי אפשרויות פנויות - גלגל ליום הבא
+  resend_after_hours: 48    # אל תשלח שוב הצעה לאותו לקוח בתוך X שעות
+  apology_after_hours: 12   # מעל X שעות המתנה - פתיחה שמתנצלת על העיכוב
+  event_title: "פגישה - {name}"   # כותרת האירוע שנוצר ביומן
+
+  # מאיפה יודעים אילו שעות תפוסות: none / file / outlook / graph / google
+  calendar:
+    provider: "none"
+    # include_tentative: true       # להתייחס ל"אולי" ביומן כתפוס (מומלץ)
+    # --- provider: outlook (האאוטלוק שמותקן במחשב הזה - בלי שום רישום) ---
+    # calendar_name: ""             # ריק = היומן הראשי
+    # --- provider: graph (Microsoft 365 דרך הרשת) ---
+    # client_id: "APP_ID_FROM_AZURE"
+    # tenant_id: "cpateam.co.il"
+    # calendar_id: "eyal@cpateam.co.il"
+    # token_cache: "state/graph_token.json"
+    # --- provider: file ---
+    # busy_file: "state/busy.json"   # [{"start": "2026-08-11T10:00", "end": "2026-08-11T11:00"}]
+    # --- provider: google ---
+    # calendar_id: "eyal@cpateam.co.il"        # אפשר גם רשימה, אם הפגישות מפוזרות:
+    # calendar_id:
+    #   - "eyal@cpateam.co.il"
+    #   - "79pf3unmcqq60gm5m67n16pjug@group.calendar.google.com"
+    # write_calendar_id: ""         # לאן ייווצרו אירועים (ברירת מחדל: הראשון ברשימה)
+    # credentials_file: "credentials.json"          # OAuth client (Desktop app) מ-Google Cloud
+    # token_file: "state/google_token.json"         # נוצר לבד אחרי האישור הראשון בדפדפן
+    # service_account_file: "service-account.json"  # חלופה ל-OAuth, מתאים להרצה מתוזמנת
+    # create_events: false          # true = ייווצר אירוע ביומן כשלקוח מאשר שעה
+  opening_line: "אשמח שנסגור פגישה קצרה."
+  opening_line_late: "מצטער על העיכוב בתשובה. אשמח שנסגור פגישה קצרה."
+  closing_line: "מה מתאים לך יותר? אפשר להשיב 1 או 2 ואשלח אישור."
+  no_fit_line: "אין בעיה. מתי נוח לך? תכתוב לי יום ושעה ואתאם."
+  location_line: ""
+  signature: "אייל רייטר, רו\"ח"
+
 matching:
   require_phone_or_id: true
   fuzzy_name_threshold: 0.85

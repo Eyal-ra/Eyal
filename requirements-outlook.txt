@@ -1,0 +1,5 @@
+# Only needed for scheduling.calendar.provider "graph" (Microsoft 365 over the
+# network). The "outlook" provider uses the local Outlook app through pywin32,
+# which is already installed on Windows by requirements.txt.
+msal>=1.28.0
+requests>=2.31.0
