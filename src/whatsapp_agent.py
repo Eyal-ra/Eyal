@@ -524,18 +524,20 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _force_utf8_output() -> None:
-    """The Windows console defaults to a codepage that cannot encode the bidi
-    marks WhatsApp puts around Hebrew, and printing one aborts the whole run."""
+def _never_die_on_encoding() -> None:
+    """Keep the console's own encoding - a Hebrew Windows codepage renders Hebrew
+    correctly and UTF-8 bytes would come out as mojibake - but stop an
+    unencodable character from aborting the run. Only the invisible bidi marks
+    were ever a problem, and those are stripped before printing anyway."""
     for stream in (sys.stdout, sys.stderr):
         try:
-            stream.reconfigure(encoding="utf-8", errors="replace")
+            stream.reconfigure(errors="replace")
         except (AttributeError, ValueError):
             pass
 
 
 def main(argv: list[str] | None = None) -> int:
-    _force_utf8_output()
+    _never_die_on_encoding()
     args = build_parser().parse_args(argv)
     cfg = load_config(args.config)
     if "whatsapp" not in cfg:
