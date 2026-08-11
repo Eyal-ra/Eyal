@@ -9,6 +9,7 @@ import json
 import threading
 import time
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import unquote, urlparse
 
@@ -302,6 +303,31 @@ def test_bridge_failure_is_reported_with_a_hint(bridge, config_file, capsys):
     bridge.fail_times = 99
     assert run(config_file, "pending") == 1
     assert "probe" in capsys.readouterr().out
+
+
+def test_calendar_command_explains_that_no_calendar_is_configured(bridge, config_file, capsys):
+    assert run(config_file, "calendar") == 0
+    out = capsys.readouterr().out
+    assert "מקור היומן: none" in out
+    assert "google" in out          # tells you how to turn one on
+
+
+def test_calendar_command_shows_busy_blocks_and_the_resulting_offer(bridge, config_file, tmp_path, capsys):
+    tomorrow = (datetime.now(ZoneInfo("Asia/Jerusalem")) + timedelta(days=1)).date()
+    busy_file = tmp_path / "busy.json"
+    busy_file.write_text(
+        json.dumps([{"start": f"{tomorrow}T10:00", "end": f"{tomorrow}T11:00"}]), encoding="utf-8"
+    )
+    cfg = yaml.safe_load(config_file.read_text(encoding="utf-8"))
+    cfg["scheduling"]["option_times"] = ["10:00", "15:00", "16:30"]
+    cfg["scheduling"]["calendar"] = {"provider": "file", "busy_file": str(busy_file)}
+    config_file.write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
+
+    assert run(config_file, "calendar") == 0
+    out = capsys.readouterr().out
+    assert "מקור היומן: file" in out
+    assert "10:00 - 11:00" in out
+    assert "15:00–15:30 | 16:30–17:00" in out   # the busy hour is not offered
 
 
 def test_agenda_is_empty_before_anything_is_booked(bridge, config_file, capsys):

@@ -4,7 +4,8 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from src.proposal_store import ProposalStore
-from src.slots import Slot, build_slots, load_busy_intervals, next_working_day
+from src.calendar_source import load_busy_intervals
+from src.slots import Slot, build_slots, next_working_day
 from src.templates import CONFIRMED, DECLINED, UNCLEAR, first_name, parse_answer, render_proposal
 from src.unanswered import (
     ScanResult,

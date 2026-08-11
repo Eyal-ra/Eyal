@@ -60,7 +60,19 @@ scheduling:
   lookahead_days: 5         # אם אין שתי אפשרויות פנויות - גלגל ליום הבא
   resend_after_hours: 48    # אל תשלח שוב הצעה לאותו לקוח בתוך X שעות
   apology_after_hours: 12   # מעל X שעות המתנה - פתיחה שמתנצלת על העיכוב
-  # busy_file: "state/busy.json"   # אופציונלי: [{"start": "2026-08-11T10:00", "end": "2026-08-11T11:00"}]
+  event_title: "פגישה - {name}"   # כותרת האירוע שנוצר ביומן
+
+  # מאיפה יודעים אילו שעות תפוסות: none / file / google
+  calendar:
+    provider: "none"
+    # --- provider: file ---
+    # busy_file: "state/busy.json"   # [{"start": "2026-08-11T10:00", "end": "2026-08-11T11:00"}]
+    # --- provider: google ---
+    # calendar_id: "eyal@cpateam.co.il"
+    # credentials_file: "credentials.json"          # OAuth client (Desktop app) מ-Google Cloud
+    # token_file: "state/google_token.json"         # נוצר לבד אחרי האישור הראשון בדפדפן
+    # service_account_file: "service-account.json"  # חלופה ל-OAuth, מתאים להרצה מתוזמנת
+    # create_events: false          # true = ייווצר אירוע ביומן כשלקוח מאשר שעה
   opening_line: "אשמח שנסגור פגישה קצרה."
   opening_line_late: "מצטער על העיכוב בתשובה. אשמח שנסגור פגישה קצרה."
   closing_line: "מה מתאים לך יותר? אפשר להשיב 1 או 2 ואשלח אישור."

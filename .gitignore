@@ -10,3 +10,6 @@ state/
 .pytest_cache/
 .mypy_cache/
 .DS_Store
+credentials.json
+service-account.json
+google_token.json

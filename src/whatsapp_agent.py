@@ -12,11 +12,13 @@ CLI: "למי טרם הגבתי, ומי מהם אפשר לתאם איתו פגי�
 import argparse
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 from .audit_log import AuditLog
+from .calendar_source import CalendarError, google_calendar, load_busy, resolve_provider
 from .main import load_config
 from .proposal_store import ProposalStore
 from .slots import Slot, build_slots
@@ -58,6 +60,14 @@ class Agent:
     def slot_from_iso(self, slot_iso: str) -> Slot:
         start = datetime.fromisoformat(slot_iso)
         return Slot(start=start, end=start + self.meeting_duration())
+
+    def book_in_calendar(self, name: str, phone: str, slot: Slot) -> Optional[str]:
+        """Write the agreed meeting into Google Calendar, when that is turned on."""
+        calendar = google_calendar(self.cfg)
+        if calendar is None or not calendar.create_events:
+            return None
+        summary = self.scheduling.get("event_title", "פגישה - {name}").format(name=name)
+        return calendar.create_event(summary, slot.start, slot.end, description=f"תואם בווטסאפ. טלפון: {phone}")
 
 
 def _prompt(question: str) -> str:
@@ -218,6 +228,15 @@ def cmd_replies(agent: Agent, args) -> int:
             slot = slots[answer.option - 1]
             print(f"{name}: בחר אפשרות {answer.option} - {slot.start:%d/%m %H:%M}")
             answered += 1
+            if not args.dry_run:
+                try:
+                    link = agent.book_in_calendar(name, chat_id.split("@")[0], slot)
+                except CalendarError as exc:
+                    print(f"  לא נוצר אירוע ביומן: {exc}")
+                else:
+                    if link:
+                        print("  נוצר אירוע ביומן")
+                        agent.audit.write("calendar_event", chat_id, name, slot.to_iso(), link=link)
             _maybe_reply(agent, args, chat_id, name,
                          render_confirmation(slot, agent.now_local.date(), agent.cfg), "confirmation")
             if not args.dry_run and args.confirm:
@@ -273,6 +292,44 @@ def cmd_agenda(agent: Agent, args) -> int:
         rows.append((slot.start, record.get("display_name", chat_id), chat_id.split("@")[0], slot.time_range))
     for start, name, phone, time_range in sorted(rows):
         print(f"  {time_range}  {name} ({phone})")
+    return 0
+
+
+def cmd_calendar(agent: Agent, args) -> int:
+    """Check calendar access the same way `probe` checks the bridge."""
+    provider = resolve_provider(agent.cfg)
+    print(f"מקור היומן: {provider}")
+    if provider == "none":
+        print("לא הוגדר יומן - כל השעות ב-option_times נחשבות פנויות.")
+        print("להפעלה: scheduling.calendar.provider: \"google\" (או \"file\") ב-config.yaml.")
+        return 0
+
+    today = agent.now_local.date()
+    start = datetime.combine(today + timedelta(days=1), time(0, 0), tzinfo=agent.tz)
+    end = start + timedelta(days=args.days)
+    try:
+        busy = load_busy(agent.cfg, agent.tz, start, end)
+    except CalendarError as exc:
+        print(f"שגיאה: {exc}")
+        return 1
+
+    print(f"תפוס בין {start:%d/%m} ל-{end:%d/%m}:")
+    if not busy:
+        print("  (לא נמצאו אירועים)")
+    for busy_start, busy_end in sorted(busy):
+        print(f"  {busy_start:%d/%m %H:%M} - {busy_end:%H:%M}")
+
+    slots, target = build_slots(agent.cfg, today=today, now=agent.now_local, busy=busy)
+    if slots:
+        print(f"\nמה שיוצע ללקוחות ({target:%d/%m}): " + " | ".join(slot.time_range for slot in slots))
+    else:
+        print("\nלא נמצאו שתי אפשרויות פנויות - הרחב את option_times או את lookahead_days.")
+
+    calendar = google_calendar(agent.cfg)
+    if calendar and calendar.create_events:
+        print("יצירת אירועים ביומן: פעילה (אירוע ייווצר כשלקוח מאשר שעה)")
+    elif calendar:
+        print("יצירת אירועים ביומן: כבויה (calendar.create_events: true כדי להפעיל)")
     return 0
 
 
@@ -344,6 +401,10 @@ def build_parser() -> argparse.ArgumentParser:
     agenda = sub.add_parser("agenda", help="מה נקבע דרך הסוכן")
     agenda.add_argument("--days", type=int, default=1, help="0=היום, 1=מחר (ברירת מחדל)")
     agenda.set_defaults(func=cmd_agenda)
+
+    calendar = sub.add_parser("calendar", help="בדיקת גישה ליומן ומה פנוי")
+    calendar.add_argument("--days", type=int, default=7, help="כמה ימים קדימה להציג")
+    calendar.set_defaults(func=cmd_calendar)
 
     probe = sub.add_parser("probe", help="בדיקת מבנה ה-API של הבריג'")
     probe.set_defaults(func=cmd_probe)

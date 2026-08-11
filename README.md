@@ -56,6 +56,7 @@ python -m src.main
 | רבגונית GUI automation | **סטאב** - דורש בדיקה מקומית להתאמת selectors |
 | סוכן ווטסאפ - זיהוי "טרם הגבתי" | מוכן (נבדק מול שרת מדומה) |
 | סוכן ווטסאפ - הצעת 2 אפשרויות + זיהוי תשובה | מוכן (נבדק מול שרת מדומה) |
+| סוכן ווטסאפ - חיבור ל-Google Calendar | מוכן, דורש `credentials.json` והרצת `calendar` |
 | סוכן ווטסאפ - התאמת נתיבי הבריג' | דורש הרצת `probe` מול `http://eyal:3980/` |
 
 ---
@@ -81,6 +82,7 @@ python -m src.whatsapp_agent schedule --dry-run    # להציג את ההודע�
 python -m src.whatsapp_agent schedule              # שליחה, עם אישור y/n לכל לקוח
 python -m src.whatsapp_agent replies --confirm     # מי ענה, מה בחר, ושליחת אישור
 python -m src.whatsapp_agent agenda                # מה נקבע דרך הסוכן למחר
+python -m src.whatsapp_agent calendar              # מה תפוס ביומן ומה יוצע
 ```
 
 דגלים שימושיים:
@@ -122,13 +124,55 @@ python -m src.whatsapp_agent agenda                # מה נקבע דרך הסו
 הקליינט מזהה לבד את שמות השדות הנפוצים (`fromMe`/`key.fromMe`, `body`/`message.conversation`,
 `timestamp` בשניות או במילישניות), כך שברוב המקרים מספיק לכוון את הנתיבים.
 
+## חיבור ליומן
+
+`scheduling.calendar.provider` קובע מאיפה הסוכן יודע מה תפוס:
+
+| provider | מה זה עושה | מה צריך |
+|----------|-------------|---------|
+| `none` | כל השעות ב-`option_times` נחשבות פנויות | כלום |
+| `file` | קובץ JSON מקומי של שעות תפוסות | קובץ `busy_file` |
+| `google` | free/busy אמיתי מ-Google Calendar | הרשאה חד-פעמית |
+
+### הפעלת Google Calendar
+
+```bash
+pip install -r requirements-google.txt
+```
+
+ב-Google Cloud Console: צור פרויקט, הפעל את **Google Calendar API**, וצור
+**OAuth client ID** מסוג *Desktop app*. הורד את ה-JSON ושמור כ-`credentials.json`.
+אז ב-`config.yaml`:
+
+```yaml
+scheduling:
+  calendar:
+    provider: "google"
+    calendar_id: "eyal@cpateam.co.il"
+    credentials_file: "credentials.json"
+    token_file: "state/google_token.json"
+    create_events: false
+```
+
+בהרצה הראשונה ייפתח דפדפן לאישור, והטוקן יישמר ב-`token_file` - אחריה זה עובד
+בלי התערבות. להרצה מתוזמנת בשרת אפשר במקום זה `service_account_file` של service
+account עם domain-wide delegation (הוא יתחזה ל-`calendar_id`).
+
+לבדיקה, כמו `probe` לבריג':
+
+```bash
+python -m src.whatsapp_agent calendar        # מה תפוס ומה יוצע ללקוחות
+```
+
+`create_events: true` יגרום לסוכן ליצור אירוע ביומן ברגע שלקוח מאשר שעה
+(דורש הרשאת כתיבה). ברירת המחדל כבויה - הסוכן רק קורא.
+
 ## שעות הפגישות
 
 נקבעות ב-`config.yaml` תחת `scheduling`:
 
 - `option_times` - רשימת שעות מועדפות. שתי הראשונות שפנויות הן מה שיוצע.
 - `skip_weekdays` - ברירת מחדל שישי ושבת, ולכן "מחר" של יום חמישי מתגלגל ליום ראשון.
-- `busy_file` - אופציונלי, קובץ JSON של פגישות תפוסות כדי לא להציע שעה שכבר תפוסה.
 - `lookahead_days` - אם אין שתי אפשרויות פנויות מחר, ההצעות מתגלגלות ליום שאחריו
   (ההודעה תמיד מציינת את התאריך המדויק).
 - `resend_after_hours` - לא נשלחת הצעה חוזרת לאותו לקוח בתוך X שעות.
@@ -148,12 +192,13 @@ src/
   diff_display.py    - הצגת השוואה ובקשת אישור
   state_store.py     - שמירת היסטוריית הגשות שכבר טופלו
 
-  whatsapp_agent.py  - CLI של סוכן הווטסאפ (pending / schedule / replies / agenda / probe)
+  whatsapp_agent.py  - CLI של הסוכן (pending / schedule / replies / agenda / calendar / probe)
   whatsapp_client.py - קליינט HTTP לבריג' הווטסאפ (retry + קצב שליחה + probe)
   unanswered.py      - הלוגיקה של "למי טרם הגבתי"
   slots.py           - בניית שתי אפשרויות הפגישה למחר
   templates.py       - נוסח ההודעה בעברית וזיהוי התשובה
   proposal_store.py  - אילו הצעות כבר נשלחו, מי ענה ומה נקבע
+  calendar_source.py - מה תפוס: none / קובץ מקומי / Google Calendar
   audit_log.py       - לוג של כל הודעה שנשלחה
 ```
 

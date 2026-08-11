@@ -5,12 +5,12 @@ The agent never books anything by itself: it proposes two options, the customer
 picks one in WhatsApp, and the meeting is coordinated from there.
 """
 
-import json
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
-from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
+
+from .calendar_source import Interval, load_busy
 
 HEBREW_DAYS = {
     0: "יום שני",
@@ -53,32 +53,7 @@ def next_working_day(start: date, skip_weekdays: list[int]) -> date:
     return start
 
 
-def load_busy_intervals(busy_file: Optional[str], tz: ZoneInfo) -> list[tuple[datetime, datetime]]:
-    """Optional JSON file of already-booked times: [{"start": ISO, "end": ISO}, ...]."""
-    if not busy_file:
-        return []
-    path = Path(busy_file)
-    if not path.exists():
-        return []
-    try:
-        entries = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return []
-    intervals = []
-    for entry in entries if isinstance(entries, list) else []:
-        try:
-            start = datetime.fromisoformat(entry["start"])
-            end = datetime.fromisoformat(entry["end"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        intervals.append((
-            start if start.tzinfo else start.replace(tzinfo=tz),
-            end if end.tzinfo else end.replace(tzinfo=tz),
-        ))
-    return intervals
-
-
-def _overlaps(slot: Slot, intervals: list[tuple[datetime, datetime]]) -> bool:
+def _overlaps(slot: Slot, intervals: list[Interval]) -> bool:
     return any(slot.start < busy_end and busy_start < slot.end for busy_start, busy_end in intervals)
 
 
@@ -101,22 +76,32 @@ def _slots_for_day(day: date, cfg: dict, tz: ZoneInfo, now: datetime, busy) -> l
     return found
 
 
-def build_slots(cfg: dict, today: Optional[date] = None, now: Optional[datetime] = None) -> tuple[list[Slot], date]:
+def build_slots(
+    cfg: dict,
+    today: Optional[date] = None,
+    now: Optional[datetime] = None,
+    busy: Optional[list[Interval]] = None,
+) -> tuple[list[Slot], date]:
     """Return (two slots, the date they are on).
 
     Starts at tomorrow, rolls past non-working days (in Israel: Friday and
     Saturday by default), and rolls on again if fewer than two options are left
     free on that day - so a fully booked tomorrow becomes the day after.
+
+    `busy` is read from the configured calendar provider unless it is passed in.
     """
     scheduling = cfg.get("scheduling", {})
     tz = ZoneInfo(scheduling.get("timezone", "Asia/Jerusalem"))
     today = today or datetime.now(tz).date()
     now = now or datetime.now(tz)
     skip_weekdays = scheduling.get("skip_weekdays", [4, 5])
-    busy = load_busy_intervals(scheduling.get("busy_file"), tz)
+    lookahead = scheduling.get("lookahead_days", 5)
 
     target = next_working_day(today + timedelta(days=1), skip_weekdays)
-    for _ in range(scheduling.get("lookahead_days", 5)):
+    if busy is None:
+        window_end = datetime.combine(target + timedelta(days=lookahead + 2), time(0, 0), tzinfo=tz)
+        busy = load_busy(cfg, tz, datetime.combine(target, time(0, 0), tzinfo=tz), window_end)
+    for _ in range(lookahead):
         slots = _slots_for_day(target, cfg, tz, now, busy)
         if len(slots) == 2:
             return slots, target
