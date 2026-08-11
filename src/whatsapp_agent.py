@@ -389,7 +389,17 @@ def cmd_probe(agent: Agent, args) -> int:
         print("    send: \"/send-message\"   # יש לאמת מול תיעוד הבריג'")
     else:
         print("\nאף נתיב לא החזיר רשימה של שיחות.")
-        if any(entry.get("status") for entry in report["chats"]):
+        statuses = {entry.get("status") for entry in report["chats"]} | \
+                   {entry.get("status") for entry in report.get("discovery", [])}
+        if statuses & {401, 403}:
+            # 401 means the paths are right and the credentials are not - saying
+            # "check the paths" here sends you looking in the wrong place.
+            print("השרת מחזיר 401 - כלומר הנתיבים נכונים, אבל ההרשאה נדחית.")
+            print("ודא שב-config.yaml, תחת whatsapp, יש בדיוק:")
+            print("  headers:")
+            print('    X-Api-Key: "המפתח שהגדרת ב-docker run"')
+            print("(שתי רמות הזחה, והמפתח זהה בדיוק לזה שב-WHATSAPP_API_KEY)")
+        elif any(entry.get("status") for entry in report["chats"]):
             print("השרת עונה, אבל הנתיבים שלו שונים מהמוכרים. שתי אפשרויות:")
             print("  1. אם הבריג' דורש שם session בנתיב - הגדר whatsapp.session ב-config.yaml והרץ שוב.")
             print("  2. חפש בתיעוד של הבריג' את הנתיב לרשימת שיחות, והגדר אותו ב-whatsapp.endpoints.")
