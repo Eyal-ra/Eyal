@@ -302,7 +302,9 @@ def cmd_calendar(agent: Agent, args) -> int:
     print(f"מקור היומן: {provider}")
     if provider == "none":
         print("לא הוגדר יומן - כל השעות ב-option_times נחשבות פנויות.")
-        print("להפעלה: scheduling.calendar.provider: \"google\" (או \"file\") ב-config.yaml.")
+        print("להפעלה, ב-config.yaml תחת scheduling.calendar:")
+        print('    provider: "outlook"   # האאוטלוק שמותקן במחשב הזה')
+        print("    (או graph / google / file - ראה README)")
         return 0
 
     today = agent.now_local.date()
