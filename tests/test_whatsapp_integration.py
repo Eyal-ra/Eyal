@@ -81,7 +81,7 @@ def _make_handler(state: BridgeState):
             length = int(self.headers.get("Content-Length", 0))
             payload = json.loads(self.rfile.read(length) or b"{}")
             state.sent.append(payload)
-            chat_id = payload["chatId"]
+            chat_id = payload.get("chatId") or payload.get("phone", "")
             state.messages.setdefault(chat_id, []).append(
                 {"id": f"out{len(state.sent)}", "fromMe": True, "timestamp": int(time.time()),
                  "body": payload.get("message") or payload.get("text", "")}
@@ -210,6 +210,15 @@ def test_extra_send_fields_are_added_to_the_payload(bridge):
     client.send_message("972501111111@c.us", "היי")
     assert bridge.sent[-1] == {"chatId": "972501111111@c.us", "text": "היי",
                                "session": "office", "linkPreview": False}
+
+
+def test_chat_id_can_be_sent_as_a_bare_phone_number(bridge):
+    client = WhatsAppClient({
+        "base_url": bridge.base_url, "send_delay_seconds": 0,
+        "send_chat_field": "phone", "send_chat_format": "phone",
+    })
+    assert client.format_chat_id("972501111111@c.us") == "972501111111"
+    assert client.format_chat_id("972501111111") == "972501111111"
 
 
 def test_probe_reports_what_the_server_says_about_itself(bridge):

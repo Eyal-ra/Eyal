@@ -221,6 +221,9 @@ class WhatsAppClient:
         # Some connectors need more than chat+text in the body - WAHA, for one,
         # wants the session name in every send.
         self.send_extra = dict(config.get("send_extra") or {})
+        # "jid" sends 972501234567@c.us, "phone" sends 972501234567 - wppconnect
+        # and several others want the bare number.
+        self.send_chat_format = str(config.get("send_chat_format", "jid"))
         self.sleeper = sleeper
         self._last_send_at: Optional[float] = None
         self.session = requests.Session()
@@ -299,9 +302,12 @@ class WhatsAppClient:
                 self.sleeper(target - waited)
         self._last_send_at = time.monotonic()
 
+    def format_chat_id(self, chat_id: str) -> str:
+        return chat_id.split("@", 1)[0] if self.send_chat_format == "phone" else chat_id
+
     def send_message(self, chat_id: str, text: str) -> dict:
         self._pace()
-        payload = {self.send_chat_field: chat_id, self.send_text_field: text}
+        payload = {self.send_chat_field: self.format_chat_id(chat_id), self.send_text_field: text}
         for key, value in self.send_extra.items():
             payload[key] = self._path(str(value)) if isinstance(value, str) else value
         resp = self._request("POST", self._path(self.endpoints["send"]), json=payload)

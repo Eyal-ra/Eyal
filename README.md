@@ -139,12 +139,35 @@ whatsapp:
     session: "{session}"
 ```
 
-ובדיקה:
+### בלי Docker: wppconnect-server
+
+עובד ישירות על Node, בלי Docker. מהתיעוד של הפרויקט (github.com/wppconnect-team/wppconnect-server):
+מורידים, `npm install`, `npm run build`, `npm start`. ברירת המחדל היא פורט 21465,
+ומייצרים טוקן דרך `POST /api/{session}/{SECRET}/generate-token`. אז:
+
+```yaml
+whatsapp:
+  base_url: "http://localhost:21465"
+  session: "eyal"
+  token: "TOKEN_FROM_GENERATE_TOKEN"
+  endpoints:
+    chats: "/api/{session}/all-chats"
+    messages: "/api/{session}/all-messages-in-chat/{chat_id}"
+    send: "/api/{session}/send-message"
+  send_chat_field: "phone"
+  send_text_field: "message"
+  send_chat_format: "phone"
+```
+
+ובדיקה (בשני המקרים):
 
 ```powershell
 python -m src.whatsapp_agent probe      # מוודא שהנתיבים עונים
 python -m src.whatsapp_agent pending    # למי טרם הגבת
 ```
+
+אם `probe` מחזיר 404 על נתיב כלשהו, הוא ידפיס איזה נתיב כן ענה - זה מה שנכנס
+ל-`endpoints`.
 
 > **חשוב:** אל תריץ שתי אוטומציות על אותו מספר ווטסאפ. אם רצה אצלך מערכת אחרת
 > שגם שולחת - כבה אותה לפני ההפעלה, אחרת לקוח עלול לקבל שתי הודעות.

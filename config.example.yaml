@@ -44,6 +44,7 @@ whatsapp:
     send: "/send-message"
   send_chat_field: "chatId"
   send_text_field: "message"
+  send_chat_format: "jid"   # jid = 9725...@c.us  |  phone = 9725... (wppconnect)
   # send_extra:               # שדות קבועים נוספים בגוף השליחה (WAHA דורש session)
   #   session: "{session}"
 
