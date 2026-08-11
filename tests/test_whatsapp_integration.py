@@ -288,9 +288,10 @@ def test_full_flow_proposal_answer_and_confirmation(bridge, config_file, capsys)
     assert run(config_file, "agenda") == 0
     assert "דנה כהן" in capsys.readouterr().out
 
-    # ...and even if she keeps writing, a booked customer is never re-offered.
+    # ...and even if she writes again with a real question, a booked customer is
+    # never re-offered slots.
     advance_time(bridge, config_file, minutes=5)
-    reply(bridge, "מעולה, נתראה", minutes_ago=2)
+    reply(bridge, "מה הכתובת המדויקת?", minutes_ago=2)
     assert run(config_file, "schedule", "--yes") == 0
     assert len(bridge.sent) == 2
     assert "כבר נקבעה פגישה" in capsys.readouterr().out

@@ -7,6 +7,7 @@ from src.proposal_store import ProposalStore
 from src.calendar_source import load_busy_intervals
 from src.slots import Slot, build_slots, next_working_day
 from src.templates import CONFIRMED, DECLINED, UNCLEAR, first_name, parse_answer, render_proposal
+from src.reply_need import needs_reply
 from src.unanswered import (
     ScanResult,
     strip_formatting_marks,
@@ -408,3 +409,35 @@ def test_pending_chat_is_built_without_invisible_marks():
     assert pending.display_name == "מיטל אדלר"
     assert pending.preview() == "משמח. מזל טוב!"
     assert all(ord(ch) < 0x2066 or ord(ch) > 0x2069 for ch in pending.display_name + pending.preview())
+
+
+# --- does the last message actually want an answer ----------------------
+
+def test_acknowledgements_do_not_count_as_waiting():
+    for closing in ["צודק", "משמח. מזל טוב!!!", "תודה רבה", "אוקיי", "מעולה, נתראה", "👍"]:
+        assert not needs_reply(closing), closing
+
+
+def test_questions_and_requests_do_count():
+    for asking in ["מתי אפשר להיפגש?", "תוכל לשלוח לי את הדוח", "אשמח לעדכון",
+                   "מה קורה עם ההחזר", "צריך את החתימה שלך"]:
+        assert needs_reply(asking), asking
+
+
+def test_a_long_message_is_shown_even_without_a_question_mark():
+    # When it is not clearly a closing, err towards showing it.
+    assert needs_reply("שלחתי לך את כל המסמכים שביקשת אתמול בערב, כולל האישורים מהבנק")
+
+
+def test_media_with_no_text_is_shown():
+    assert needs_reply("")
+
+
+def test_scan_result_splits_open_from_closed():
+    chats = [WhatsAppChat("1@c.us", "שאלה", False, 0), WhatsAppChat("2@c.us", "סגירה", False, 0)]
+    messages = {"1@c.us": [msg(120, from_me=False, text="מתי נוכל להיפגש?")],
+                "2@c.us": [msg(120, from_me=False, text="צודק")]}
+    result = scan_pending(FakeClient(chats, messages), {"scan": {}}, NOW)
+    assert [c.display_name for c in result.open_chats] == ["שאלה"]
+    assert [c.display_name for c in result.closed_chats] == ["סגירה"]
+    assert len(result.pending) == 2      # nothing is dropped, only grouped

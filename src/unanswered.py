@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
+from .reply_need import needs_reply
 from .whatsapp_client import WhatsAppChat, WhatsAppClient, WhatsAppError, WhatsAppMessage
 
 
@@ -29,6 +30,7 @@ class PendingChat:
     last_inbound_text: str
     unread: int = 0
     inbound_streak: int = 1
+    needs_reply: bool = True
 
     def waiting_hours(self, now: datetime) -> float:
         return max(0.0, (now - self.last_inbound_at).total_seconds() / 3600.0)
@@ -57,6 +59,7 @@ class PendingChat:
             "last_message": self.last_inbound_text,
             "unread": self.unread,
             "inbound_streak": self.inbound_streak,
+            "needs_reply": self.needs_reply,
         }
 
 
@@ -65,6 +68,16 @@ class ScanResult:
     pending: list[PendingChat] = field(default_factory=list)
     scanned: int = 0
     errors: list[tuple[str, str]] = field(default_factory=list)
+
+    @property
+    def open_chats(self) -> list[PendingChat]:
+        """The ones that read like an open question."""
+        return [chat for chat in self.pending if chat.needs_reply]
+
+    @property
+    def closed_chats(self) -> list[PendingChat]:
+        """Last word was an acknowledgement - listed, but not chased."""
+        return [chat for chat in self.pending if not chat.needs_reply]
 
 
 def last_inbound_without_reply(messages: list[WhatsAppMessage]) -> Optional[WhatsAppMessage]:
@@ -110,6 +123,7 @@ def evaluate_chat(
         last_inbound_text=strip_formatting_marks(pending.text),
         unread=chat.unread,
         inbound_streak=count_trailing_inbound(messages),
+        needs_reply=needs_reply(pending.text),
     )
 
 

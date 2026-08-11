@@ -88,22 +88,37 @@ def _matches_filter(chat: PendingChat, needle: str) -> bool:
     return needle in chat.display_name.lower() or needle in chat.phone or needle in chat.chat_id.lower()
 
 
+def _print_chat_line(index: int, chat: PendingChat, now: datetime) -> None:
+    badges = []
+    if chat.unread:
+        badges.append(f"{chat.unread} לא נקראו")
+    if chat.inbound_streak > 1:
+        badges.append(f"{chat.inbound_streak} הודעות ברצף")
+    suffix = f" [{', '.join(badges)}]" if badges else ""
+    print(f"{index:>2}. {chat.display_name} ({chat.phone}) - ממתין {chat.waiting_label(now)}{suffix}")
+    print(f"    \"{chat.preview()}\"")
+
+
 def _print_scan(result: ScanResult, now: datetime) -> None:
     for name, error in result.errors:
         print(f"אזהרה: לא ניתן לקרוא את השיחה עם {name} - {error}")
     if not result.pending:
         print(f"נסרקו {result.scanned} שיחות. אין שיחות שממתינות לתשובה.")
         return
-    print(f"\n{len(result.pending)} שיחות שטרם הגבת להן, מתוך {result.scanned} שנסרקו (הוותיקה קודם):\n")
-    for index, chat in enumerate(result.pending, start=1):
-        badges = []
-        if chat.unread:
-            badges.append(f"{chat.unread} לא נקראו")
-        if chat.inbound_streak > 1:
-            badges.append(f"{chat.inbound_streak} הודעות ברצף")
-        suffix = f" [{', '.join(badges)}]" if badges else ""
-        print(f"{index:>2}. {chat.display_name} ({chat.phone}) - ממתין {chat.waiting_label(now)}{suffix}")
-        print(f"    \"{chat.preview()}\"")
+
+    open_chats, closed_chats = result.open_chats, result.closed_chats
+    if open_chats:
+        print(f"\n{len(open_chats)} שיחות שנראה שממתינות לתשובה, מתוך {result.scanned} שנסרקו:\n")
+        for index, chat in enumerate(open_chats, start=1):
+            _print_chat_line(index, chat, now)
+    else:
+        print(f"\nנסרקו {result.scanned} שיחות. אין שיחה שנראית פתוחה.")
+
+    if closed_chats:
+        # Listed, not hidden: the reading is a guess, and the call is yours.
+        print(f"\n{len(closed_chats)} שיחות שההודעה האחרונה בהן נראית סגירה (\"תודה\", \"צודק\"):\n")
+        for index, chat in enumerate(closed_chats, start=1):
+            _print_chat_line(index, chat, now)
 
 
 def _scan(agent: Agent, args) -> ScanResult:
@@ -127,7 +142,8 @@ def _scan(agent: Agent, args) -> ScanResult:
 def cmd_pending(agent: Agent, args) -> int:
     now = agent.now_utc
     result = _scan(agent, args)
-    pending = result.pending[: args.limit]
+    chats = result.pending if args.all else result.open_chats
+    pending = chats[: args.limit]
     if args.json:
         print(json.dumps([chat.to_dict(now) for chat in pending], ensure_ascii=False, indent=2))
         return 0
@@ -148,9 +164,15 @@ def cmd_schedule(agent: Agent, args) -> int:
     result = _scan(agent, args)
     _print_scan(result, now)
 
+    # Offering a meeting to someone whose last word was "תודה" reads as noise.
+    targets = result.pending if getattr(args, "include_closed", False) else result.open_chats
+    if not targets:
+        print("\nאין שיחה פתוחה להציע לה פגישה. להצעה גם לשיחות שנראות סגורות: --include-closed")
+        return 0
+
     resend_after = agent.scheduling.get("resend_after_hours", 48)
     sent = skipped = declined = 0
-    for chat in result.pending[: args.limit]:
+    for chat in targets[: args.limit]:
         reason = agent.store.should_skip(chat.chat_id, resend_after, now)
         if reason:
             print(f"\n--- {chat.display_name}: דילוג ({reason})")
@@ -296,6 +318,49 @@ def cmd_agenda(agent: Agent, args) -> int:
     return 0
 
 
+def cmd_send(agent: Agent, args) -> int:
+    """Send one message to one person - with the same approval and audit trail."""
+    text = Path(args.file).read_text(encoding="utf-8-sig").strip() if args.file else args.text
+    if not text:
+        print("אין מה לשלוח. השתמש ב---text או ב---file.")
+        return 1
+
+    needle = args.to.strip().lower()
+    matches = [
+        chat for chat in agent.client.fetch_chats(limit=agent.cfg.get("scan", {}).get("chat_limit", 50))
+        if needle in chat.name.lower() or needle in chat.chat_id.lower()
+    ]
+    if not matches:
+        print(f"לא נמצאה שיחה שמתאימה ל-{args.to!r}. הרץ pending כדי לראות את השמות כפי שהם מופיעים.")
+        return 1
+    if len(matches) > 1:
+        print(f"{args.to!r} מתאים ליותר משיחה אחת - דייק:")
+        for chat in matches:
+            print(f"  {chat.name} ({chat.chat_id})")
+        return 1
+
+    target = matches[0]
+    print(f"אל: {target.name} ({target.chat_id})")
+    print("\n".join(f"  | {line}" for line in text.splitlines()))
+
+    if not args.yes and _prompt("לשלוח?") != "yes":
+        print("לא נשלח.")
+        return 0
+    if args.dry_run:
+        print("[dry-run] לא נשלח בפועל")
+        return 0
+
+    try:
+        agent.client.send_message(target.chat_id, text)
+    except WhatsAppError as exc:
+        print(f"שגיאה בשליחה: {exc}")
+        agent.audit.write("send_failed", target.chat_id, target.name, text, error=str(exc))
+        return 1
+    agent.audit.write("manual_send", target.chat_id, target.name, text)
+    print("נשלח.")
+    return 0
+
+
 def cmd_calendar(agent: Agent, args) -> int:
     """Check calendar access the same way `probe` checks the bridge."""
     provider = resolve_provider(agent.cfg)
@@ -421,6 +486,7 @@ def build_parser() -> argparse.ArgumentParser:
     pending.add_argument("--limit", type=int, default=20)
     pending.add_argument("--only", help="סנן לפי שם / טלפון")
     pending.add_argument("--json", action="store_true", help="פלט JSON")
+    pending.add_argument("--all", action="store_true", help="כולל שיחות שנראות סגורות")
     pending.set_defaults(func=cmd_pending)
 
     schedule = sub.add_parser("schedule", help="שליחת הצעת שתי אפשרויות למחר")
@@ -428,6 +494,8 @@ def build_parser() -> argparse.ArgumentParser:
     schedule.add_argument("--only", help="סנן לפי שם / טלפון")
     schedule.add_argument("--dry-run", action="store_true", help="הצג את ההודעות בלי לשלוח")
     schedule.add_argument("--yes", action="store_true", help="שלח בלי לשאול על כל לקוח")
+    schedule.add_argument("--include-closed", action="store_true",
+                          help="הצע פגישה גם למי שההודעה האחרונה שלו נראית סגירה")
     schedule.set_defaults(func=cmd_schedule)
 
     replies = sub.add_parser("replies", help="מי ענה להצעה ומה בחר")
@@ -438,6 +506,14 @@ def build_parser() -> argparse.ArgumentParser:
     agenda = sub.add_parser("agenda", help="מה נקבע דרך הסוכן")
     agenda.add_argument("--days", type=int, default=1, help="0=היום, 1=מחר (ברירת מחדל)")
     agenda.set_defaults(func=cmd_agenda)
+
+    send = sub.add_parser("send", help="שליחת הודעה אחת לאיש קשר")
+    send.add_argument("--to", required=True, help="שם או מספר (חלקי)")
+    send.add_argument("--text", help="תוכן ההודעה")
+    send.add_argument("--file", help="קובץ טקסט עם תוכן ההודעה")
+    send.add_argument("--yes", action="store_true", help="שלח בלי לשאול")
+    send.add_argument("--dry-run", action="store_true")
+    send.set_defaults(func=cmd_send)
 
     calendar = sub.add_parser("calendar", help="בדיקת גישה ליומן ומה פנוי")
     calendar.add_argument("--days", type=int, default=7, help="כמה ימים קדימה להציג")
