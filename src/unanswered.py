@@ -6,11 +6,18 @@ after it. The decision itself is pure (it takes an already-normalized message
 list) so it can be tested without touching the bridge.
 """
 
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from .whatsapp_client import WhatsAppChat, WhatsAppClient, WhatsAppError, WhatsAppMessage
+
+
+def strip_formatting_marks(text: str) -> str:
+    """Remove invisible bidi/format characters (U+2066 and friends). WhatsApp
+    wraps Hebrew and phone numbers in them, and they only get in the way here."""
+    return "".join(ch for ch in (text or "") if unicodedata.category(ch) != "Cf")
 
 
 @dataclass
@@ -97,10 +104,10 @@ def evaluate_chat(
         return None
     return PendingChat(
         chat_id=chat.chat_id,
-        display_name=chat.name,
+        display_name=strip_formatting_marks(chat.name),
         phone=chat.phone,
         last_inbound_at=pending.sent_at,
-        last_inbound_text=pending.text,
+        last_inbound_text=strip_formatting_marks(pending.text),
         unread=chat.unread,
         inbound_streak=count_trailing_inbound(messages),
     )

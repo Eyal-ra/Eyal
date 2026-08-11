@@ -9,6 +9,7 @@ from src.slots import Slot, build_slots, next_working_day
 from src.templates import CONFIRMED, DECLINED, UNCLEAR, first_name, parse_answer, render_proposal
 from src.unanswered import (
     ScanResult,
+    strip_formatting_marks,
     count_trailing_inbound,
     evaluate_chat,
     last_inbound_without_reply,
@@ -389,3 +390,21 @@ def test_declined_answer_is_not_a_booking(tmp_path):
 def test_scan_result_defaults_are_empty():
     result = ScanResult()
     assert result.pending == [] and result.errors == [] and result.scanned == 0
+
+
+# --- text that WhatsApp wraps in invisible marks ------------------------
+
+def test_bidi_marks_are_stripped_from_names_and_previews():
+    # WhatsApp isolates Hebrew and numbers with U+2066..U+2069; the Windows
+    # console cannot encode them and they add nothing to a report.
+    marked = "\u2066רואת חשבון\u2069 מיטל אדלר"
+    assert strip_formatting_marks(marked) == "רואת חשבון מיטל אדלר"
+    assert strip_formatting_marks("") == ""
+
+
+def test_pending_chat_is_built_without_invisible_marks():
+    noisy = chat(name="\u2066מיטל אדלר\u2069")
+    pending = evaluate_chat(noisy, [msg(180, from_me=False, text="\u2066משמח. מזל טוב!\u2069")], NOW)
+    assert pending.display_name == "מיטל אדלר"
+    assert pending.preview() == "משמח. מזל טוב!"
+    assert all(ord(ch) < 0x2066 or ord(ch) > 0x2069 for ch in pending.display_name + pending.preview())

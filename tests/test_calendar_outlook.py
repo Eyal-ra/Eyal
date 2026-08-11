@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from src.calendar_outlook import (
+    _com_failure_hint,
     OutlookGraph,
     OutlookLocal,
     parse_schedule,
@@ -201,3 +202,18 @@ def test_a_gap_shorter_than_the_meeting_is_not_offered():
     gaps = working_hours_gaps(busy, datetime(2026, 8, 12, 8, 40, tzinfo=TZ),
                               datetime(2026, 8, 12, 10, 0, tzinfo=TZ), timedelta(minutes=30))
     assert [f"{start:%H:%M}" for start, _ in gaps] == []   # 20m before, 15m after - neither fits
+
+
+# --- COM error codes, translated -----------------------------------------
+
+def test_server_execution_failed_points_at_the_elevation_mismatch():
+    hint = _com_failure_hint(Exception("(-2146959355, 'Server execution failed', None, None)"))
+    assert "כמנהל" in hint and "רגיל" in hint
+
+
+def test_missing_outlook_points_at_the_graph_provider():
+    assert "graph" in _com_failure_hint(Exception("(-2147221005, 'Invalid class string')"))
+
+
+def test_an_unknown_com_error_falls_back_to_the_general_advice():
+    assert "Outlook" in _com_failure_hint(Exception("something else entirely"))

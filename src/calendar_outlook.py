@@ -45,6 +45,20 @@ def _com_datetime(value, tz: ZoneInfo) -> datetime:
                     value.hour, value.minute, getattr(value, "second", 0), tzinfo=tz)
 
 
+def _com_failure_hint(exc: Exception) -> str:
+    """COM's error codes are opaque, and the most common one here has nothing to
+    do with Outlook being installed - it is an elevation mismatch."""
+    text = str(exc)
+    if "-2146959355" in text or "Server execution failed" in text:
+        return (
+            "זו כמעט תמיד אי-התאמת הרשאות: PowerShell רץ כמנהל ו-Outlook רץ כמשתמש רגיל.\n"
+            "הרץ מחלון PowerShell רגיל (לא 'הפעל כמנהל'), כשה-Outlook פתוח."
+        )
+    if "-2147221005" in text or "Invalid class string" in text:
+        return "לא נמצא Outlook מותקן במחשב הזה. השתמש ב-provider: \"graph\" במקום."
+    return "ודא ש-Outlook מותקן, פתוח, ומחובר לחשבון במחשב הזה."
+
+
 class OutlookLocal:
     """Reads the calendar of the Outlook profile signed in on this machine."""
 
@@ -66,8 +80,7 @@ class OutlookLocal:
             return folder
         except Exception as exc:
             raise CalendarError(
-                f"לא ניתן לפתוח את היומן ב-Outlook: {exc}\n"
-                "ודא ש-Outlook מותקן ומחובר לחשבון במחשב הזה."
+                f"לא ניתן לפתוח את היומן ב-Outlook: {exc}\n" + _com_failure_hint(exc)
             ) from exc
 
     def busy(self, start: datetime, end: datetime, tz: ZoneInfo) -> list[Interval]:
