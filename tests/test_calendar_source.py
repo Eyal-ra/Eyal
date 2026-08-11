@@ -128,6 +128,25 @@ def test_google_create_event_sends_the_slot_and_returns_the_link():
     assert "0501111111" in body["description"]
 
 
+def test_busy_is_merged_across_several_calendars():
+    office = "79pf3unmcqq60gm5m67n16pjug@group.calendar.google.com"
+    service = FakeService({"calendars": {
+        CALENDAR_ID: {"busy": [{"start": "2026-08-12T16:30:00Z", "end": "2026-08-12T20:30:00Z"}]},
+        office: {"busy": [{"start": "2026-08-12T09:30:00Z", "end": "2026-08-12T10:30:00Z"}]},
+    }})
+    calendar = google({"calendar_id": [CALENDAR_ID, office]}, service=service)
+    start = datetime(2026, 8, 12, 0, 0, tzinfo=TZ)
+    busy = calendar.busy(start, start + timedelta(days=1), TZ)
+
+    assert service.query_body["items"] == [{"id": CALENDAR_ID}, {"id": office}]
+    assert [interval[0].strftime("%H:%M") for interval in busy] == ["12:30", "19:30"]   # sorted, both calendars
+
+
+def test_events_are_created_on_the_first_calendar_unless_overridden():
+    assert google({"calendar_id": ["a@x", "b@x"]}).write_calendar_id == "a@x"
+    assert google({"calendar_id": ["a@x", "b@x"], "write_calendar_id": "b@x"}).write_calendar_id == "b@x"
+
+
 def test_write_scope_is_only_requested_when_events_are_enabled():
     assert len(google({"create_events": False})._scopes()) == 1
     assert len(google({"create_events": True})._scopes()) == 2

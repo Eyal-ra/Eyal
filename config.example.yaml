@@ -68,7 +68,11 @@ scheduling:
     # --- provider: file ---
     # busy_file: "state/busy.json"   # [{"start": "2026-08-11T10:00", "end": "2026-08-11T11:00"}]
     # --- provider: google ---
-    # calendar_id: "eyal@cpateam.co.il"
+    # calendar_id: "eyal@cpateam.co.il"        # אפשר גם רשימה, אם הפגישות מפוזרות:
+    # calendar_id:
+    #   - "eyal@cpateam.co.il"
+    #   - "79pf3unmcqq60gm5m67n16pjug@group.calendar.google.com"
+    # write_calendar_id: ""         # לאן ייווצרו אירועים (ברירת מחדל: הראשון ברשימה)
     # credentials_file: "credentials.json"          # OAuth client (Desktop app) מ-Google Cloud
     # token_file: "state/google_token.json"         # נוצר לבד אחרי האישור הראשון בדפדפן
     # service_account_file: "service-account.json"  # חלופה ל-OAuth, מתאים להרצה מתוזמנת

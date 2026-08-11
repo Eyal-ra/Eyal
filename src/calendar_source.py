@@ -73,7 +73,12 @@ class GoogleCalendar:
     """
 
     def __init__(self, config: dict):
-        self.calendar_id = config.get("calendar_id", "primary")
+        raw_ids = config.get("calendar_id", "primary")
+        # Availability usually spans more than one calendar (a personal one, a
+        # shared office one), so calendar_id accepts a list as well as a string.
+        self.calendar_ids = [str(raw_ids)] if isinstance(raw_ids, str) else [str(x) for x in raw_ids]
+        self.calendar_id = self.calendar_ids[0]
+        self.write_calendar_id = config.get("write_calendar_id") or self.calendar_id
         self.credentials_file = config.get("credentials_file", "credentials.json")
         self.token_file = config.get("token_file", "state/google_token.json")
         self.service_account_file = config.get("service_account_file")
@@ -144,7 +149,7 @@ class GoogleCalendar:
             "timeMin": start.isoformat(),
             "timeMax": end.isoformat(),
             "timeZone": str(tz),
-            "items": [{"id": self.calendar_id}],
+            "items": [{"id": calendar_id} for calendar_id in self.calendar_ids],
         }
         try:
             response = self._service().freebusy().query(body=body).execute()
@@ -152,7 +157,7 @@ class GoogleCalendar:
             raise
         except Exception as exc:  # googleapiclient raises a wide range of errors
             raise CalendarError(f"קריאת היומן נכשלה: {exc}") from exc
-        return parse_freebusy(response, self.calendar_id, tz)
+        return parse_freebusy(response, self.calendar_ids, tz)
 
     # -- writing --
 
@@ -164,7 +169,7 @@ class GoogleCalendar:
             "end": {"dateTime": end.isoformat(), "timeZone": str(end.tzinfo)},
         }
         try:
-            event = self._service().events().insert(calendarId=self.calendar_id, body=body).execute()
+            event = self._service().events().insert(calendarId=self.write_calendar_id, body=body).execute()
         except CalendarError:
             raise
         except Exception as exc:
@@ -172,27 +177,31 @@ class GoogleCalendar:
         return event.get("htmlLink", "")
 
 
-def parse_freebusy(response: dict, calendar_id: str, tz: ZoneInfo) -> list[Interval]:
-    """Turn a freeBusy response into (start, end) pairs, raising on per-calendar errors."""
+def parse_freebusy(response: dict, calendar_ids, tz: ZoneInfo) -> list[Interval]:
+    """Turn a freeBusy response into (start, end) pairs across every requested
+    calendar, raising on per-calendar errors."""
+    wanted = [calendar_ids] if isinstance(calendar_ids, str) else list(calendar_ids)
     calendars = (response or {}).get("calendars") or {}
-    entry = calendars.get(calendar_id)
-    if entry is None and len(calendars) == 1:
-        entry = next(iter(calendars.values()))   # the API may answer under a resolved id
-    if entry is None:
-        raise CalendarError(f"היומן {calendar_id} לא הוחזר בתשובה. בדוק את calendar_id וההרשאות.")
-    if entry.get("errors"):
-        reasons = ", ".join(error.get("reason", "?") for error in entry["errors"])
-        raise CalendarError(f"היומן {calendar_id} החזיר שגיאה: {reasons}")
 
     intervals: list[Interval] = []
-    for block in entry.get("busy", []):
-        try:
-            start = datetime.fromisoformat(str(block["start"]).replace("Z", "+00:00"))
-            end = datetime.fromisoformat(str(block["end"]).replace("Z", "+00:00"))
-        except (KeyError, TypeError, ValueError):
-            continue
-        intervals.append((start.astimezone(tz), end.astimezone(tz)))
-    return intervals
+    for calendar_id in wanted:
+        entry = calendars.get(calendar_id)
+        if entry is None and len(wanted) == 1 and len(calendars) == 1:
+            entry = next(iter(calendars.values()))   # the API may answer under a resolved id
+        if entry is None:
+            raise CalendarError(f"היומן {calendar_id} לא הוחזר בתשובה. בדוק את calendar_id וההרשאות.")
+        if entry.get("errors"):
+            reasons = ", ".join(error.get("reason", "?") for error in entry["errors"])
+            raise CalendarError(f"היומן {calendar_id} החזיר שגיאה: {reasons}")
+
+        for block in entry.get("busy", []):
+            try:
+                start = datetime.fromisoformat(str(block["start"]).replace("Z", "+00:00"))
+                end = datetime.fromisoformat(str(block["end"]).replace("Z", "+00:00"))
+            except (KeyError, TypeError, ValueError):
+                continue
+            intervals.append((start.astimezone(tz), end.astimezone(tz)))
+    return sorted(intervals)
 
 
 # --- provider selection -------------------------------------------------
