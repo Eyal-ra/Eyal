@@ -32,12 +32,13 @@ whatsapp:
   # token: "YOUR_BRIDGE_TOKEN"        # אופציונלי - נשלח כ-Authorization: Bearer
   # headers: {}                       # אופציונלי - כותרות נוספות לבריג'
   timeout_seconds: 30
+  session: "default"        # שם ה-session/instance, אם הבריג' דורש אותו בנתיב
   retries: 3                # ניסיונות חוזרים על תקלות רשת / 5xx
   send_delay_seconds: 8     # מרווח בין הודעות יוצאות - מקטין סיכון לחסימה
   proposals_path: "state/whatsapp_proposals.json"
   log_path: "state/whatsapp_sent.log"   # לוג של כל הודעה שנשלחה
   # הנתיבים משתנים בין בריג'ים. הרץ `python -m src.whatsapp_agent probe` וקבע לפי מה שענה.
-  endpoints:
+  endpoints:                # אפשר להשתמש ב-{session} וב-{chat_id} בתוך הנתיב
     chats: "/chats"
     messages: "/chats/{chat_id}/messages"
     send: "/send-message"

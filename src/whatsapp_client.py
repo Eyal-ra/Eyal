@@ -26,6 +26,25 @@ DEFAULT_ENDPOINTS = {
     "send": "/send-message",
 }
 
+# Asked first, to find out WHICH bridge this is: most of them answer their name,
+# version or session list on one of these.
+PROBE_DISCOVERY_PATHS = [
+    "/",
+    "/api",
+    "/health",
+    "/status",
+    "/ping",
+    "/version",
+    "/sessions",
+    "/api/sessions",
+    "/instance/fetchInstances",
+    "/api-docs",
+    "/swagger.json",
+    "/openapi.json",
+]
+
+# {session} is filled in from whatsapp.session in config.yaml - WPPConnect, WAHA
+# and Evolution all put the session or instance name inside the path.
 PROBE_CHAT_PATHS = [
     "/chats",
     "/api/chats",
@@ -33,6 +52,12 @@ PROBE_CHAT_PATHS = [
     "/api/all-chats",
     "/chat/list",
     "/messages/chats",
+    "/api/{session}/all-chats",
+    "/api/{session}/chats",
+    "/api/{session}/list-chats",
+    "/{session}/chats",
+    "/api/v1/chats",
+    "/chat/findChats/{session}",
 ]
 
 PROBE_MESSAGE_PATHS = [
@@ -42,6 +67,9 @@ PROBE_MESSAGE_PATHS = [
     "/api/messages/{chat_id}",
     "/chat-messages",
     "/all-messages-in-chat/{chat_id}",
+    "/api/{session}/chat-messages/{chat_id}",
+    "/api/{session}/all-messages-in-chat/{chat_id}",
+    "/api/{session}/messages/{chat_id}",
 ]
 
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
@@ -187,6 +215,7 @@ class WhatsAppClient:
         self.timeout = config.get("timeout_seconds", 30)
         self.retries = config.get("retries", 3)
         self.send_delay_seconds = config.get("send_delay_seconds", 8)
+        self.session_name = str(config.get("session", "default"))
         self.send_chat_field = config.get("send_chat_field", "chatId")
         self.send_text_field = config.get("send_text_field", "message")
         self.sleeper = sleeper
@@ -199,6 +228,13 @@ class WhatsAppClient:
             self.session.headers[header] = str(value)
 
     # --- plumbing -------------------------------------------------------
+
+    def _path(self, template: str, **values) -> str:
+        """Fill {session} / {chat_id} placeholders; templates without them pass through."""
+        try:
+            return template.format(session=self.session_name, **values)
+        except (KeyError, IndexError):
+            return template
 
     def _url(self, path: str) -> str:
         return f"{self.base_url}/{path.lstrip('/')}"
@@ -233,7 +269,7 @@ class WhatsAppClient:
     # --- reading --------------------------------------------------------
 
     def fetch_chats(self, limit: int = 100) -> list[WhatsAppChat]:
-        resp = self._request("GET", self.endpoints["chats"], params={"limit": limit})
+        resp = self._request("GET", self._path(self.endpoints["chats"]), params={"limit": limit})
         chats = [parse_chat(item) for item in unwrap_list(self._json(resp)) if isinstance(item, dict)]
         return [chat for chat in chats if chat.chat_id]
 
@@ -242,7 +278,7 @@ class WhatsAppClient:
         params: dict = {"limit": limit}
         if "{chat_id}" not in template:
             params["chatId"] = chat_id
-        resp = self._request("GET", template.format(chat_id=chat_id), params=params)
+        resp = self._request("GET", self._path(template, chat_id=chat_id), params=params)
         messages = [parse_message(item, chat_id) for item in unwrap_list(self._json(resp)) if isinstance(item, dict)]
         return sorted(messages, key=lambda m: m.sent_at or datetime.min.replace(tzinfo=timezone.utc))
 
@@ -263,7 +299,7 @@ class WhatsAppClient:
     def send_message(self, chat_id: str, text: str) -> dict:
         self._pace()
         payload = {self.send_chat_field: chat_id, self.send_text_field: text}
-        resp = self._request("POST", self.endpoints["send"], json=payload)
+        resp = self._request("POST", self._path(self.endpoints["send"]), json=payload)
         try:
             return resp.json()
         except ValueError:
@@ -273,11 +309,22 @@ class WhatsAppClient:
 
     def probe(self) -> dict:
         """Try the common paths and report what the server answers, so config.yaml
-        can be filled in against a real response instead of by guesswork."""
-        report: dict = {"chats": [], "messages": [], "sample_chat_id": None, "suggested": {}}
+        can be filled in against a real response instead of by guesswork.
+
+        Starts with discovery paths, because when no chat path answers the useful
+        question is no longer "which path" but "which bridge is this at all" -
+        and the raw body of / or /health usually says so.
+        """
+        report: dict = {"discovery": [], "chats": [], "messages": [], "sample_chat_id": None, "suggested": {}}
+
+        for path in PROBE_DISCOVERY_PATHS:
+            entry = self._probe_path(self._path(path), want_body=True)
+            entry.pop("first_id", None)
+            if entry.get("status") not in (404, None) or entry.get("body"):
+                report["discovery"].append(entry)
 
         for path in dict.fromkeys([self.endpoints["chats"], *PROBE_CHAT_PATHS]):
-            entry = self._probe_path(path)
+            entry = self._probe_path(self._path(path))
             report["chats"].append(entry)
             if entry.get("items") and report["sample_chat_id"] is None:
                 report["sample_chat_id"] = entry.pop("first_id", None)
@@ -288,7 +335,7 @@ class WhatsAppClient:
         chat_id = report["sample_chat_id"]
         if chat_id:
             for template in dict.fromkeys([self.endpoints["messages"], *PROBE_MESSAGE_PATHS]):
-                path = template.format(chat_id=chat_id)
+                path = self._path(template, chat_id=chat_id)
                 entry = self._probe_path(path, extra_params=None if "{chat_id}" in template else {"chatId": chat_id})
                 entry["template"] = template
                 entry.pop("first_id", None)
@@ -297,7 +344,7 @@ class WhatsAppClient:
                     report["suggested"]["messages"] = template
         return report
 
-    def _probe_path(self, path: str, extra_params: Optional[dict] = None) -> dict:
+    def _probe_path(self, path: str, extra_params: Optional[dict] = None, want_body: bool = False) -> dict:
         entry: dict = {"path": path}
         params = {"limit": 1, **(extra_params or {})}
         try:
@@ -306,6 +353,10 @@ class WhatsAppClient:
             entry["error"] = str(exc)
             return entry
         entry["status"] = resp.status_code
+        if want_body:
+            body_text = " ".join(resp.text.split())
+            if body_text and body_text not in ('"not found"', "not found", "{}"):
+                entry["body"] = body_text[:200]
         try:
             body = resp.json()
         except ValueError:

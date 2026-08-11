@@ -66,6 +66,8 @@ def _make_handler(state: BridgeState):
                 self.end_headers()
                 return
             path = unquote(urlparse(self.path).path)
+            if path == "/health":
+                return self._send_json({"server": "fake-bridge", "version": "1.0"})
             if path == "/chats":
                 return self._send_json({"response": state.chats})
             if path.startswith("/chats/") and path.endswith("/messages"):
@@ -195,6 +197,23 @@ def test_probe_reports_the_working_paths(bridge):
     assert report["suggested"]["chats"] == "/chats"
     assert report["suggested"]["messages"] == "/chats/{chat_id}/messages"
     assert report["sample_chat_id"] == "972501111111@c.us"
+
+
+def test_probe_reports_what_the_server_says_about_itself(bridge):
+    report = WhatsAppClient({"base_url": bridge.base_url}).probe()
+    bodies = " ".join(entry.get("body", "") for entry in report["discovery"])
+    assert "fake-bridge" in bodies      # served from /health
+
+
+def test_session_name_is_filled_into_the_paths(bridge):
+    client = WhatsAppClient({
+        "base_url": bridge.base_url,
+        "session": "office",
+        "endpoints": {"chats": "/api/{session}/all-chats",
+                      "messages": "/api/{session}/chat-messages/{chat_id}"},
+    })
+    assert client._path(client.endpoints["chats"]) == "/api/office/all-chats"
+    assert client._path(client.endpoints["messages"], chat_id="1@c.us") == "/api/office/chat-messages/1@c.us"
 
 
 # --- CLI level ----------------------------------------------------------

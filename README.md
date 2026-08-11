@@ -122,6 +122,11 @@ python -m src.whatsapp_agent calendar              # מה תפוס ביומן ו
 3. העתק את הנתיב ושמות השדות שעבדו אל `whatsapp.endpoints` ב-`config.yaml`.
 4. הרץ `pending` כדי לוודא שהרשימה נראית נכון, ורק אז `schedule`.
 
+אם כל הנתיבים חוזרים 404, `probe` יראה גם מה השרת עונה על `/`, `/health`,
+`/sessions` וכדומה - משם בדרך כלל מזהים איזה בריג' זה. הרבה בריג'ים (WPPConnect,
+WAHA, Evolution) דורשים שם session בתוך הנתיב; הגדר אותו ב-`whatsapp.session`
+והשתמש ב-`{session}` בתוך `endpoints`, למשל `/api/{session}/all-chats`.
+
 הקליינט מזהה לבד את שמות השדות הנפוצים (`fromMe`/`key.fromMe`, `body`/`message.conversation`,
 `timestamp` בשניות או במילישניות), כך שברוב המקרים מספיק לכוון את הנתיבים.
 

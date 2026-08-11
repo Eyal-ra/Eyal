@@ -353,6 +353,15 @@ def cmd_probe(agent: Agent, args) -> int:
                 line += f"  {entry['note']}"
             print(line)
 
+    discovery = report.get("discovery") or []
+    if discovery:
+        print("מה השרת מספר על עצמו:")
+        for entry in discovery:
+            print(f"  {entry['path']:<28} {entry.get('status', entry.get('error', '?'))}")
+            if entry.get("body"):
+                print(f"      {entry['body']}")
+        print()
+
     show("שיחות:", report["chats"])
     print()
     show("הודעות:", report["messages"])
@@ -367,7 +376,13 @@ def cmd_probe(agent: Agent, args) -> int:
                 print(f"    {key}: \"{suggested[key]}\"")
         print("    send: \"/send-message\"   # יש לאמת מול תיעוד הבריג'")
     else:
-        print("\nאף נתיב לא החזיר רשימה. ודא שהבריג' רץ ומחובר, ובדוק את התיעוד שלו.")
+        print("\nאף נתיב לא החזיר רשימה של שיחות.")
+        if any(entry.get("status") for entry in report["chats"]):
+            print("השרת עונה, אבל הנתיבים שלו שונים מהמוכרים. שתי אפשרויות:")
+            print("  1. אם הבריג' דורש שם session בנתיב - הגדר whatsapp.session ב-config.yaml והרץ שוב.")
+            print("  2. חפש בתיעוד של הבריג' את הנתיב לרשימת שיחות, והגדר אותו ב-whatsapp.endpoints.")
+        else:
+            print("השרת לא ענה בכלל. ודא שהבריג' רץ ושהכתובת ב-base_url נכונה.")
     print("\nשים לב: נתיב השליחה לא נבדק כאן כדי לא לשלוח הודעה אמיתית.")
     return 0
 
