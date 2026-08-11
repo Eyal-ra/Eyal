@@ -218,6 +218,9 @@ class WhatsAppClient:
         self.session_name = str(config.get("session", "default"))
         self.send_chat_field = config.get("send_chat_field", "chatId")
         self.send_text_field = config.get("send_text_field", "message")
+        # Some connectors need more than chat+text in the body - WAHA, for one,
+        # wants the session name in every send.
+        self.send_extra = dict(config.get("send_extra") or {})
         self.sleeper = sleeper
         self._last_send_at: Optional[float] = None
         self.session = requests.Session()
@@ -299,6 +302,8 @@ class WhatsAppClient:
     def send_message(self, chat_id: str, text: str) -> dict:
         self._pace()
         payload = {self.send_chat_field: chat_id, self.send_text_field: text}
+        for key, value in self.send_extra.items():
+            payload[key] = self._path(str(value)) if isinstance(value, str) else value
         resp = self._request("POST", self._path(self.endpoints["send"]), json=payload)
         try:
             return resp.json()

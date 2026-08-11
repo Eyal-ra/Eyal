@@ -44,6 +44,8 @@ whatsapp:
     send: "/send-message"
   send_chat_field: "chatId"
   send_text_field: "message"
+  # send_extra:               # שדות קבועים נוספים בגוף השליחה (WAHA דורש session)
+  #   session: "{session}"
 
 scan:
   chat_limit: 50            # כמה שיחות אחרונות לסרוק

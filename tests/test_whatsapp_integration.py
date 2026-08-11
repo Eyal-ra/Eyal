@@ -83,8 +83,8 @@ def _make_handler(state: BridgeState):
             state.sent.append(payload)
             chat_id = payload["chatId"]
             state.messages.setdefault(chat_id, []).append(
-                {"id": f"out{len(state.sent)}", "fromMe": True,
-                 "timestamp": int(time.time()), "body": payload["message"]}
+                {"id": f"out{len(state.sent)}", "fromMe": True, "timestamp": int(time.time()),
+                 "body": payload.get("message") or payload.get("text", "")}
             )
             return self._send_json({"status": "ok"})
 
@@ -197,6 +197,19 @@ def test_probe_reports_the_working_paths(bridge):
     assert report["suggested"]["chats"] == "/chats"
     assert report["suggested"]["messages"] == "/chats/{chat_id}/messages"
     assert report["sample_chat_id"] == "972501111111@c.us"
+
+
+def test_extra_send_fields_are_added_to_the_payload(bridge):
+    client = WhatsAppClient({
+        "base_url": bridge.base_url,
+        "session": "office",
+        "send_delay_seconds": 0,
+        "send_text_field": "text",
+        "send_extra": {"session": "{session}", "linkPreview": False},
+    })
+    client.send_message("972501111111@c.us", "היי")
+    assert bridge.sent[-1] == {"chatId": "972501111111@c.us", "text": "היי",
+                               "session": "office", "linkPreview": False}
 
 
 def test_probe_reports_what_the_server_says_about_itself(bridge):

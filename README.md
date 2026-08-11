@@ -111,9 +111,47 @@ python -m src.whatsapp_agent calendar              # מה תפוס ביומן ו
 ("בעשר", "ב-15:00", "בבוקר"). תשובה שלילית ("שתיהן לא מתאימות") מקבלת שאלה חוזרת
 מתי כן נוח. כל השאר מסומן לטיפול ידני - עדיף שהסוכן ישתוק מלנחש.
 
-## הגדרה ראשונה
+## החיבור לוואטסאפ
 
-הנתיבים ושמות השדות משתנים בין בריג'ים (WPPConnect / whatsapp-web.js / Green API),
+הסוכן לא מחזיק בעצמו את חיבור הוואטסאפ - הוא מדבר עם **מחבר** שכל תפקידו להחזיק
+את הסשן ולחשוף REST. למחבר אין שום לוגיקה; כל ההחלטות כאן.
+
+המחבר המומלץ הוא [WAHA](https://waha.devlike.pro). הפעלה:
+
+```powershell
+docker run -it --rm -p 3000:3000 -v waha:/app/.sessions devlikeapro/waha
+```
+
+פתח `http://localhost:3000`, סרוק QR פעם אחת (וואטסאפ בטלפון ← מכשירים מקושרים
+← קישור מכשיר), ואז ב-`config.yaml`:
+
+```yaml
+whatsapp:
+  base_url: "http://localhost:3000"
+  session: "default"
+  endpoints:
+    chats: "/api/{session}/chats"
+    messages: "/api/{session}/chats/{chat_id}/messages"
+    send: "/api/sendText"
+  send_chat_field: "chatId"
+  send_text_field: "text"
+  send_extra:
+    session: "{session}"
+```
+
+ובדיקה:
+
+```powershell
+python -m src.whatsapp_agent probe      # מוודא שהנתיבים עונים
+python -m src.whatsapp_agent pending    # למי טרם הגבת
+```
+
+> **חשוב:** אל תריץ שתי אוטומציות על אותו מספר ווטסאפ. אם רצה אצלך מערכת אחרת
+> שגם שולחת - כבה אותה לפני ההפעלה, אחרת לקוח עלול לקבל שתי הודעות.
+
+## חיבור למחבר אחר
+
+הנתיבים ושמות השדות משתנים בין מחברים (WPPConnect / whatsapp-web.js / Evolution),
 ולכן הכל יושב ב-`config.yaml`. סדר הפעולות:
 
 1. ודא שהבריג' רץ ומחובר (סריקת QR).
