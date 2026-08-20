@@ -29,3 +29,29 @@ state:
 matching:
   require_phone_or_id: true
   fuzzy_name_threshold: 0.85
+
+# Invoice router — learns where each invoice should be forwarded (which
+# client's bookkeeping "intake" mailbox) from your own Sent Items history.
+invoice_router:
+  # Your own company book — invoices addressed to "אייל רייטר…" go here.
+  company_address: "516879236@expense.co.il"
+  company_aliases: ["אייל רייטר"]
+  # Optional: map a client's 9-digit id straight to an address.
+  # id_map:
+  #   "517143814": "517143814@expense.co.il"
+
+  graph:
+    # Easiest: paste a delegated Graph access token with Mail.Read scope.
+    access_token: "YOUR_GRAPH_ACCESS_TOKEN"
+    # OR app-only auth (then `mailbox` is required):
+    # tenant_id: "YOUR_TENANT_ID"
+    # client_id: "YOUR_CLIENT_ID"
+    # client_secret: "YOUR_CLIENT_SECRET"
+    # mailbox: "eyal@cpateam.co.il"
+
+  # Hand-verified rules that override anything learned from history.
+  seed:
+    'חברת אייל רייטר': "516879236@expense.co.il"        # your company (Sumit)
+    'זקי דיאב חברת עו"ד': "517143814@expense.co.il"     # client — Sumit
+    'ספרול מדיה בע"מ': "maven6405816@invoice-maven.com" # client — Maven
+    # sole proprietor (Paperless): bk_b6a2l9awyl@mail.paperless.tax
