@@ -93,9 +93,32 @@ python scripts/setup_hostname.py
 
 ניהול המסלול מטיוטת הדוחות ועד הסגירה הסופית.
 
+### הפעלה - פעם אחת, פקודה אחת
+
 ```bash
-python -m src.dashboard        # http://localhost:9999  ->  "סגירת דוחות כספיים"
+pip install -r requirements.txt
+python scripts/start_dashboard.py
 ```
+
+בהרצה הראשונה הסקריפט מבקש שם משתמש וסיסמה, יוצר `config.yaml` עם מפתח
+אבטחה אקראי, שומר את הסיסמה כ-hash, ומעלה את השרת. בהרצות הבאות הוא פשוט
+מעלה אותו. ב-Windows אפשר גם ללחוץ לחיצה כפולה על **`start-dashboard.bat`**.
+
+ואז בדפדפן:
+
+```
+http://localhost:9999            הדשבורד
+http://localhost:9999/reports    סקירת וסגירת דוחות כספיים
+```
+
+| צריך | פקודה |
+|---|---|
+| להחליף סיסמה | `python scripts/start_dashboard.py --reset-user` |
+| הפורט תפוס | `python scripts/start_dashboard.py --port 9998` |
+| כתובת ידידותית במקום localhost | `python scripts/setup_hostname.py` |
+
+גישה ממחשב אחר במשרד עובדת כברירת מחדל (`host: 0.0.0.0`) בכתובת
+`http://<שם-המחשב-שמריץ>:9999`.
 
 ### שלושת השלבים
 
