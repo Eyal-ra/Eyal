@@ -8,6 +8,7 @@
   <div class="tile"><span class="tile-num">{{ summary.reports_open }}</span><span class="tile-label">דוחות בטיפול</span></div>
   <div class="tile"><span class="tile-num">{{ summary.notes_open }}</span><span class="tile-label">הערות פתוחות</span></div>
   <div class="tile ok"><span class="tile-num">{{ summary.ready_to_close }}</span><span class="tile-label">מוכנים לסגירה</span></div>
+  <div class="tile pending"><span class="tile-num">{{ summary.awaiting_notes }}</span><span class="tile-label">טרם נרשמו הערות</span></div>
   <div class="tile muted"><span class="tile-num">{{ summary.reports_closed }}</span><span class="tile-label">דוחות סגורים</span></div>
 </div>
 
@@ -72,6 +73,7 @@
         </td>
         <td>
           {% if r.is_closed %}<span class="badge closed">סגור</span>
+          {% elif r.is_untouched %}<span class="badge pending">טרם נרשמו הערות</span>
           {% elif r.can_close %}<span class="badge ready">מוכן לסגירה</span>
           {% else %}<span class="badge open">בטיפול</span>{% endif %}
         </td>

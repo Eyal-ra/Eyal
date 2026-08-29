@@ -270,3 +270,29 @@ def test_home_page_shows_closure_tiles(client, report_id):
     html = client.get("/").get_data(as_text=True)
     assert "סגירת דוחות כספיים" in html
     assert "הערות פתוחות" in html
+
+
+def test_untouched_report_is_labelled_not_ready(client, report_id):
+    """דוח חדש בלי הערות מסומן 'טרם נרשמו הערות', לא 'מוכן לסגירה'."""
+    detail = client.get(f"/reports/{report_id}").get_data(as_text=True)
+    assert "טרם נרשמו הערות" in detail
+    assert "מוכן לסגירה" not in detail
+
+    listing = client.get("/reports/").get_data(as_text=True)
+    assert "טרם נרשמו הערות" in listing
+
+
+def test_report_reads_ready_only_after_notes_are_handled(client, state_path, report_id):
+    client.post(
+        f"/reports/{report_id}/notes",
+        data={"text": "הערה", "csrf_token": csrf(client, f"/reports/{report_id}")},
+        follow_redirects=True,
+    )
+    note_id = notes_of(state_path)[0]["id"]
+    html = client.post(
+        f"/reports/{report_id}/notes/{note_id}/done",
+        data={"csrf_token": csrf(client, f"/reports/{report_id}")},
+        follow_redirects=True,
+    ).get_data(as_text=True)
+    assert "מוכן לסגירה" in html
+    assert "טרם נרשמו הערות" not in html

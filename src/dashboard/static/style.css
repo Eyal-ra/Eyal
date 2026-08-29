@@ -155,6 +155,7 @@ table.submissions tr:last-child td { border-bottom: none; }
 }
 .tile.ok { border-inline-start-color: #15803d; }
 .tile.muted { border-inline-start-color: var(--muted); }
+.tile.pending { border-inline-start-color: #6d28d9; }
 .tile-num { font-size: 1.6rem; font-weight: 700; }
 .tile-label { color: var(--muted); font-size: 0.85rem; }
 
@@ -193,6 +194,7 @@ button:disabled { background: #c8cedb; cursor: not-allowed; }
 .badge.done { background: #e6f6ec; color: #15803d; }
 .badge.ready { background: #e7f0fd; color: var(--primary-dark); }
 .badge.closed { background: #eef1f6; color: var(--muted); }
+.badge.pending { background: #f3f0ff; color: #6d28d9; }
 .badge.cancelled { background: #f3f4f6; color: var(--muted); }
 .muted-inline { color: var(--muted); font-size: 0.82rem; }
 

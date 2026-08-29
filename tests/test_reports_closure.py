@@ -312,3 +312,37 @@ def test_written_file_is_readable_json(store, report):
     data = json.loads(store.path.read_text(encoding="utf-8"))
     assert data["version"] == 1
     assert data["reports"][0]["notes"][0]["text"] == "הערה"
+
+
+# ----------------------------------------------------------------------
+# דוח שנפתח וטרם נרשמו בו הערות
+# ----------------------------------------------------------------------
+
+
+def test_untouched_report_is_not_shown_as_complete(store, report):
+    """דוח שנפתח וטרם נסקר אינו '100% מטופל' - אחרת הוא נראה כמו דוח שהסתיים."""
+    assert report.is_untouched
+    assert report.progress_pct == 0
+    # עדיין ניתן לסגירה: דוח בלי ממצאים הוא מקרה לגיטימי
+    assert report.can_close
+
+
+def test_report_stops_being_untouched_once_a_note_is_added(store, report):
+    note = store.add_note(report.id, "הערה")
+    assert not store.get_report(report.id).is_untouched
+    store.mark_done(report.id, note.id, by="אייל")
+    handled = store.get_report(report.id)
+    assert not handled.is_untouched
+    assert handled.progress_pct == 100
+
+
+def test_summary_separates_untouched_from_ready_to_close(store):
+    untouched = store.add_report("טרם נסקר")
+    reviewed = store.add_report("נסקר")
+    note = store.add_note(reviewed.id, "הערה")
+    store.mark_done(reviewed.id, note.id, by="אייל")
+
+    summary = store.summary()
+    assert summary["awaiting_notes"] == 1
+    assert summary["ready_to_close"] == 1
+    assert store.get_report(untouched.id).is_untouched

@@ -341,5 +341,9 @@ class ClosureStore:
             "reports_closed": len(reports) - len(open_reports),
             "notes_open": sum(r.open_count for r in open_reports),
             "notes_done": sum(len(r.done_notes) for r in reports),
-            "ready_to_close": sum(1 for r in open_reports if r.can_close),
+            # רק דוחות שנסקרו והערותיהם טופלו - לא דוחות שטרם נרשמה בהם הערה
+            "ready_to_close": sum(
+                1 for r in open_reports if r.can_close and not r.is_untouched
+            ),
+            "awaiting_notes": sum(1 for r in open_reports if r.is_untouched),
         }

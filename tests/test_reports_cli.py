@@ -152,3 +152,19 @@ def test_new_report(path, capsys):
     report = ClosureStore(path).list_reports()[0]
     assert report.client_id == "514000000"
     assert report.created_by == "אייל"
+
+
+def test_notes_says_nothing_recorded_for_untouched_report(path, capsys):
+    run("--path", path, "new", "--client", "דגן", "--period", "2025")
+    capsys.readouterr()
+    assert run("--path", path, "notes", "--client", "דגן") == 0
+    out = capsys.readouterr().out
+    assert "טרם נרשמו הערות" in out
+    assert "מוכן לסגירה" not in out
+
+
+def test_list_flags_untouched_reports(path, capsys):
+    run("--path", path, "new", "--client", "דגן")
+    capsys.readouterr()
+    run("--path", path, "list")
+    assert "טרם נרשמו הערות" in capsys.readouterr().out

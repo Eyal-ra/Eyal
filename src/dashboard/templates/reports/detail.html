@@ -6,6 +6,7 @@
   <div>
     <h1>{{ report.client_name }}
       {% if report.is_closed %}<span class="badge closed">סגור</span>
+      {% elif report.is_untouched %}<span class="badge pending">טרם נרשמו הערות</span>
       {% elif report.can_close %}<span class="badge ready">מוכן לסגירה</span>{% endif %}
     </h1>
     <p class="subtitle">
@@ -21,9 +22,13 @@
     <div class="progress-bar" style="width: {{ report.progress_pct }}%"></div>
   </div>
   <p class="progress-summary">
+    {% if report.is_untouched %}
+    טרם נרשמו הערות בדוח הזה. הכניסו את הערות הסקירה כדי להתחיל.
+    {% else %}
     נותרו <strong>{{ report.open_count }}</strong> הערות פתוחות
     מתוך {{ report.total_count }} שנרשמו
     ({{ report.done_notes|length }} בוצעו{% if report.cancelled_notes %}, {{ report.cancelled_notes|length }} בוטלו{% endif %}).
+    {% endif %}
   </p>
 
   <div class="actions">
@@ -37,6 +42,7 @@
     <form method="post" action="{{ url_for('reports.close_report', report_id=report.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" {% if not report.can_close %}disabled title="יש עדיין הערות פתוחות"{% endif %}>סגור את הדוח</button>
+      {% if report.is_untouched %}<span class="muted-inline">שימו לב: לא נרשמו הערות בדוח הזה.</span>{% endif %}
     </form>
     {% endif %}
   </div>
@@ -73,6 +79,8 @@
     </li>
     {% endfor %}
   </ul>
+  {% elif report.is_untouched %}
+  <div class="alert info">טרם נרשמו הערות. הדביקו את הערות הסקירה למטה, או הוסיפו הערה בודדת.</div>
   {% else %}
   <div class="alert success">אין הערות פתוחות — הדוח מוכן לסגירה.</div>
   {% endif %}

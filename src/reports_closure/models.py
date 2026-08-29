@@ -231,9 +231,15 @@ class Report:
 
     @property
     def progress_pct(self) -> int:
+        # דוח שטרם נרשמו בו הערות אינו "100% מטופל" - הוא בכלל לא נסקר עדיין.
         if not self.notes:
-            return 100
+            return 0
         return round(self.handled_count * 100 / self.total_count)
+
+    @property
+    def is_untouched(self) -> bool:
+        """נפתח אך טרם נרשמה בו אף הערה - להבדיל מדוח שכל הערותיו טופלו."""
+        return self.total_count == 0
 
     @property
     def is_closed(self) -> bool:
@@ -241,6 +247,11 @@ class Report:
 
     @property
     def can_close(self) -> bool:
+        """דוח בלי הערות פתוחות ניתן לסגירה - גם דוח שלא היו בו ממצאים כלל.
+
+        ההבחנה בין "כל ההערות טופלו" ל"טרם נרשמו הערות" נעשית ב-``is_untouched``,
+        כדי שדוח שטרם נסקר לא יוצג כדוח שסיימת.
+        """
         return self.status == REPORT_OPEN and self.open_count == 0
 
     @property

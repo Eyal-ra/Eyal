@@ -61,7 +61,10 @@ def _print_notes(report) -> None:
     print(f"{report.title} ({report.report_type})")
     print(f"פתוחות: {report.open_count} · טופלו: {report.handled_count} · מזהה: {report.id}")
     if not open_notes:
-        print("אין הערות פתוחות — הדוח מוכן לסגירה.")
+        if report.is_untouched:
+            print("טרם נרשמו הערות בדוח הזה.")
+        else:
+            print("אין הערות פתוחות — הדוח מוכן לסגירה.")
         return
     print("-" * 60)
     for index, note in enumerate(open_notes, start=1):
@@ -143,7 +146,12 @@ def run(args) -> int:
             print("אין דוחות.")
             return 0
         for report in reports:
-            flag = "סגור" if report.is_closed else f"{report.open_count} פתוחות"
+            if report.is_closed:
+                flag = "סגור"
+            elif report.is_untouched:
+                flag = "טרם נרשמו הערות"
+            else:
+                flag = f"{report.open_count} פתוחות"
             print(f"{report.id}  {report.client_name} · {report.period or '-'}  ({flag})")
         return 0
 
@@ -201,7 +209,7 @@ def run(args) -> int:
         print(f'סומן כבוצע: {note.text}')
         print(f"נותרו {fresh.open_count} הערות פתוחות.")
         if fresh.can_close:
-            print("הדוח מוכן לסגירה.")
+            print("כל ההערות טופלו — הדוח מוכן לסגירה.")
         return 0
 
     if args.command == "close":
