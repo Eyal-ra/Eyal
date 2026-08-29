@@ -49,6 +49,17 @@ def check_dependencies() -> None:
         )
 
 
+def hash_password(password: str) -> str:
+    from werkzeug.security import generate_password_hash
+
+    return generate_password_hash(password)
+
+
+def interactive() -> bool:
+    """האם יש טרמינל אמיתי לשאול בו. סוכן או סקריפט - אין."""
+    return sys.stdin.isatty()
+
+
 def ask_password() -> str:
     """מבקש סיסמה פעמיים ומחזיר את ה-hash שלה."""
     from werkzeug.security import generate_password_hash
@@ -64,16 +75,34 @@ def ask_password() -> str:
         return generate_password_hash(password)
 
 
-def create_config() -> None:
-    """יוצר config.yaml מתוך הדוגמה, עם מפתח אקראי ומשתמש אמיתי."""
+def create_config(username=None, password=None, display_name=None) -> None:
+    """יוצר config.yaml מתוך הדוגמה, עם מפתח אקראי ומשתמש אמיתי.
+
+    כשמועברים ``username``/``password`` הכל נעשה בלי לשאול - כך שסקריפט או
+    סוכן יכולים להריץ את ההגדרה. בלעדיהם, ובלי טרמינל אינטראקטיבי, הפונקציה
+    נכשלת עם הודעה ברורה במקום להיתקע על שאלה שאיש לא יענה עליה.
+    """
     if not EXAMPLE.exists():
         fail(f"קובץ הדוגמה {EXAMPLE.name} חסר. משכו מחדש את הפרויקט.")
 
-    print("\n  הגדרה ראשונית של הדשבורד")
-    print("  " + "-" * 40)
-    username = input("    שם משתמש [eyal]: ").strip() or "eyal"
-    display_name = input("    שם לתצוגה [אייל רייטר]: ").strip() or "אייל רייטר"
-    password_hash = ask_password()
+    if password:
+        username = username or "eyal"
+        display_name = display_name or username
+        password_hash = hash_password(password)
+        print(f"\n  נוצרות הגדרות למשתמש '{username}' (ללא שאלות).")
+    elif not interactive():
+        fail(
+            "אין config.yaml, ואי אפשר לשאול שם משתמש וסיסמה בלי טרמינל.\n"
+            "    הריצו עם הפרטים ישירות, למשל:\n"
+            "        python scripts/start_reports.py --username eyal --password '<סיסמה>' --setup-only\n"
+            "    ואז הפעילו את השרת."
+        )
+    else:
+        print("\n  הגדרה ראשונית של הדשבורד")
+        print("  " + "-" * 40)
+        username = input("    שם משתמש [eyal]: ").strip() or "eyal"
+        display_name = input("    שם לתצוגה [אייל רייטר]: ").strip() or "אייל רייטר"
+        password_hash = ask_password()
 
     text = EXAMPLE.read_text(encoding="utf-8")
     text = text.replace(SECRET_PLACEHOLDER, secrets.token_hex(32))
@@ -86,10 +115,15 @@ def create_config() -> None:
     print(f"\n  [V] נוצר {CONFIG.name} עם המשתמש '{username}'.")
 
 
-def reset_user() -> None:
+def reset_user(password=None) -> None:
     """מחליף את הסיסמה של המשתמש הראשון בקובץ קיים."""
     text = CONFIG.read_text(encoding="utf-8")
-    password_hash = ask_password()
+    if password:
+        password_hash = hash_password(password)
+    elif not interactive():
+        fail("אין טרמינל לשאול בו סיסמה. הריצו עם --password '<סיסמה>'.")
+    else:
+        password_hash = ask_password()
     updated, count = re.subn(
         r'(password_hash:\s*)"[^"]*"', rf'\1"{password_hash}"', text, count=1
     )
@@ -99,12 +133,12 @@ def reset_user() -> None:
     print("\n  [V] הסיסמה עודכנה.")
 
 
-def check_config_is_usable() -> None:
+def check_config_is_usable(password=None) -> None:
     """מוודא שקובץ קיים אינו נשאר עם ערכי ברירת המחדל של הדוגמה."""
     text = CONFIG.read_text(encoding="utf-8")
     if HASH_PLACEHOLDER in text:
         print("\n  ב-config.yaml עדיין אין סיסמה. נגדיר אחת עכשיו.")
-        reset_user()
+        reset_user(password)
         text = CONFIG.read_text(encoding="utf-8")
     if SECRET_PLACEHOLDER in text:
         CONFIG.write_text(
@@ -119,17 +153,28 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--reset-user", action="store_true", help="החלפת הסיסמה של המשתמש"
     )
+    parser.add_argument("--username", help="שם משתמש, במקום לשאול")
+    parser.add_argument("--password", help="סיסמה, במקום לשאול")
+    parser.add_argument("--display-name", dest="display_name", help="שם לתצוגה")
+    parser.add_argument(
+        "--setup-only", action="store_true",
+        help="יצירת ההגדרות בלבד, בלי להעלות את השרת",
+    )
     args = parser.parse_args(argv)
 
     check_dependencies()
     sys.path.insert(0, str(ROOT))
 
     if not CONFIG.exists():
-        create_config()
+        create_config(args.username, args.password, args.display_name)
     elif args.reset_user:
-        reset_user()
+        reset_user(args.password)
     else:
-        check_config_is_usable()
+        check_config_is_usable(args.password)
+
+    if args.setup_only:
+        print(f"\n[V] ההגדרות מוכנות ב-{CONFIG.name}. להפעלה: python scripts/start_dashboard.py\n")
+        return 0
 
     from src.dashboard import create_app, load_config
 

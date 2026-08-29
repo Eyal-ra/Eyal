@@ -37,16 +37,28 @@ def main(argv=None) -> int:
     parser.add_argument("--port", type=int, help=f"פורט (ברירת מחדל {DEFAULT_PORT})")
     parser.add_argument("--host", help="כתובת האזנה")
     parser.add_argument("--reset-user", action="store_true", help="החלפת סיסמה")
+    parser.add_argument("--username", help="שם משתמש, במקום לשאול")
+    parser.add_argument("--password", help="סיסמה, במקום לשאול")
+    parser.add_argument("--display-name", dest="display_name", help="שם לתצוגה")
+    parser.add_argument(
+        "--setup-only", action="store_true",
+        help="יצירת ההגדרות בלבד, בלי להעלות את השרת",
+    )
     args = parser.parse_args(argv)
 
     check_dependencies()
 
     if not CONFIG.exists():
-        create_config()
+        create_config(args.username, args.password, args.display_name)
     elif args.reset_user:
-        reset_user()
+        reset_user(args.password)
     else:
-        check_config_is_usable()
+        check_config_is_usable(args.password)
+
+    if args.setup_only:
+        print(f"\n[V] ההגדרות מוכנות ב-{CONFIG.name}.")
+        print("    להפעלת השרת: python scripts/start_reports.py\n")
+        return 0
 
     from flask import redirect, url_for
 

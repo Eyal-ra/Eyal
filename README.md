@@ -105,6 +105,16 @@ python scripts/start_reports.py          # http://localhost:9998
 
 ב-Windows: לחיצה כפולה על **`start-reports.bat`**.
 
+**להרצה מסקריפט או מסוכן** (בלי טרמינל שאפשר לשאול בו):
+
+```bash
+python scripts/start_reports.py --username eyal --password "<סיסמה>" --setup-only
+python scripts/start_reports.py     # ואז השרת, ברקע - הוא רץ עד שעוצרים אותו
+```
+
+בלי `--password` ובלי טרמינל, הסקריפט נכשל עם הודעה ברורה במקום להיתקע על
+שאלה שאיש לא יענה עליה.
+
 ### הכרטיס ללוח הבקרה - אוטומטית
 
 לוח הבקרה הוא קובץ HTML מקומי. הסקריפט משתיל בו את הכרטיס לבד:
