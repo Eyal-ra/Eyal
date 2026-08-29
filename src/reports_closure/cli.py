@@ -7,7 +7,7 @@
     python -m src.reports_closure.cli import --client "אהבה" --file notes.txt
     cat notes.txt | python -m src.reports_closure.cli import --client "אהבה" -
     python -m src.reports_closure.cli notes  --client "אהבה"
-    python -m src.reports_closure.cli done   --client "אהבה" --note 3 --comment "הותאם"
+    python -m src.reports_closure.cli done   --client "אהבה" --note 3 --answer "הותאם"
     python -m src.reports_closure.cli close  --client "אהבה"
     python -m src.reports_closure.cli guidelines --file guidelines.txt
 
@@ -59,18 +59,25 @@ def _read_text(source: str) -> str:
 def _print_notes(report) -> None:
     open_notes = report.sorted_open_notes()
     print(f"{report.title} ({report.report_type})")
-    print(f"פתוחות: {report.open_count} · טופלו: {report.handled_count} · מזהה: {report.id}")
+    print(f"שלב: {report.stage_label} · ללא תשובה: {report.open_count} · נענו: {report.handled_count}")
+    print(f"מזהה: {report.id}")
     if not open_notes:
         if report.is_untouched:
             print("טרם נרשמו הערות בדוח הזה.")
         else:
-            print("אין הערות פתוחות — הדוח מוכן לסגירה.")
+            print("כל ההערות נענו — הדוח מוכן לסגירה.")
         return
     print("-" * 60)
     for index, note in enumerate(open_notes, start=1):
-        amount = f" [{note.amount:,.0f} ₪]" if note.amount is not None else ""
         severity = SEVERITY_LABELS.get(note.severity, note.severity)
-        print(f"{index}. [{note.category}/{severity}] {note.text}{amount}")
+        print(f"{index}. [{severity}] {note.topic or ''}".rstrip())
+        print(f"   {note.text}")
+        if note.impact:
+            print(f"   השלכה: {note.impact}")
+        if note.recommendation:
+            print(f"   המלצה: {note.recommendation}")
+        if note.reference:
+            print(f"   הפניה: {note.reference}")
 
 
 def _find_note(report, reference: str):
@@ -110,7 +117,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--client", required=True)
     p.add_argument("--period", default="")
     p.add_argument("--client-id", default="", dest="client_id")
-    p.add_argument("--type", default="דוח שנתי", dest="report_type")
+    p.add_argument("--type", default="דוחות כספיים", dest="report_type")
+    p.add_argument("--prepared-by", default="", dest="prepared_by")
 
     p = sub.add_parser("import", help="קליטת הערות מקובץ או מהקלט הסטנדרטי")
     add_target(p)
@@ -120,13 +128,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--create", action="store_true", help="פתיחת הדוח אם אינו קיים"
     )
 
-    p = sub.add_parser("notes", help="הצגת ההערות הפתוחות")
+    p = sub.add_parser("draft", help="טעינת טיוטה לדוח")
+    add_target(p)
+    p.add_argument("--file", required=True, help="קובץ הטיוטה")
+    p.add_argument("--note", default="", help="הערת גרסה")
+
+    p = sub.add_parser("notes", help="הצגת ההערות הממתינות לתשובה")
     add_target(p)
 
-    p = sub.add_parser("done", help="סימון הערה כבוצעה")
+    p = sub.add_parser("done", help="מענה להערה וסימונה כבוצעה")
     add_target(p)
     p.add_argument("--note", required=True, help="מספר ההערה ברשימה, או מזהה")
-    p.add_argument("--comment", default="", help="מה בוצע")
+    p.add_argument("--answer", required=True, help="התשובה / מה בוצע - חובה")
 
     p = sub.add_parser("close", help="סגירת הדוח")
     add_target(p)
@@ -146,12 +159,9 @@ def run(args) -> int:
             print("אין דוחות.")
             return 0
         for report in reports:
-            if report.is_closed:
-                flag = "סגור"
-            elif report.is_untouched:
-                flag = "טרם נרשמו הערות"
-            else:
-                flag = f"{report.open_count} פתוחות"
+            flag = report.stage_label
+            if report.open_count:
+                flag = f"{flag} ({report.open_count})"
             print(f"{report.id}  {report.client_name} · {report.period or '-'}  ({flag})")
         return 0
 
@@ -161,6 +171,7 @@ def run(args) -> int:
             period=args.period,
             client_id=args.client_id,
             report_type=args.report_type,
+            prepared_by=args.prepared_by,
             created_by=args.by,
         )
         print(f"נפתח דוח {report.id}: {report.title}")
@@ -187,6 +198,18 @@ def run(args) -> int:
 
     report = _resolve_report(store, args)
 
+    if args.command == "draft":
+        source = Path(args.file)
+        draft = store.add_draft(
+            report.id,
+            filename=source.name,
+            content=source.read_bytes(),
+            uploaded_by=args.by,
+            note=args.note,
+        )
+        print(f"נטענה טיוטה גרסה {draft.version}: {draft.filename}")
+        return 0
+
     if args.command == "import":
         added = store.import_notes(
             report.id,
@@ -204,10 +227,10 @@ def run(args) -> int:
 
     if args.command == "done":
         note = _find_note(report, args.note)
-        store.mark_done(report.id, note.id, by=args.by, comment=args.comment)
+        store.mark_done(report.id, note.id, by=args.by, answer=args.answer)
         fresh = store.get_report(report.id)
-        print(f'סומן כבוצע: {note.text}')
-        print(f"נותרו {fresh.open_count} הערות פתוחות.")
+        print(f"נענתה: {note.topic or note.text}")
+        print(f"נותרו {fresh.open_count} הערות ללא תשובה.")
         if fresh.can_close:
             print("כל ההערות טופלו — הדוח מוכן לסגירה.")
         return 0

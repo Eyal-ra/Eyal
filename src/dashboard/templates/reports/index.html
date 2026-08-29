@@ -1,14 +1,15 @@
 {% extends "base.html" %}
 {% block title %}סגירת דוחות כספיים{% endblock %}
 {% block content %}
-<h1>סגירת דוחות כספיים</h1>
-<p class="subtitle">כל הערה שנרשמה בסקירה נשארת ברשימה עד שמסמנים אותה כבוצעה. דוח נסגר כשהרשימה מתרוקנת.</p>
+<h1>סקירת וסגירת דוחות כספיים</h1>
+<p class="subtitle">טיוטה → הערות סקירה → תשובה לכל הערה → סגירה סופית. כל הערה נסגרת רק עם תשובה כתובה.</p>
 
 <div class="tiles">
   <div class="tile"><span class="tile-num">{{ summary.reports_open }}</span><span class="tile-label">דוחות בטיפול</span></div>
-  <div class="tile"><span class="tile-num">{{ summary.notes_open }}</span><span class="tile-label">הערות פתוחות</span></div>
+  <div class="tile"><span class="tile-num">{{ summary.notes_open }}</span><span class="tile-label">הערות ללא תשובה</span></div>
   <div class="tile ok"><span class="tile-num">{{ summary.ready_to_close }}</span><span class="tile-label">מוכנים לסגירה</span></div>
-  <div class="tile pending"><span class="tile-num">{{ summary.awaiting_notes }}</span><span class="tile-label">טרם נרשמו הערות</span></div>
+  <div class="tile pending"><span class="tile-num">{{ summary.awaiting_notes }}</span><span class="tile-label">ממתינים להערות</span></div>
+  <div class="tile pending"><span class="tile-num">{{ summary.awaiting_draft }}</span><span class="tile-label">ממתינים לטיוטה</span></div>
   <div class="tile muted"><span class="tile-num">{{ summary.reports_closed }}</span><span class="tile-label">דוחות סגורים</span></div>
 </div>
 
@@ -24,6 +25,7 @@
         {% for t in REPORT_TYPES %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
       </select>
     </label>
+    <label>מכין הטיוטה<input type="text" name="prepared_by" placeholder="לינוי"></label>
     <button type="submit">פתח דוח</button>
   </form>
 </section>
@@ -49,9 +51,9 @@
         <th>לקוח</th>
         <th>תקופה</th>
         <th>סוג</th>
-        <th>הערות פתוחות</th>
+        <th>ללא תשובה</th>
         <th>התקדמות</th>
-        <th>סטטוס</th>
+        <th>שלב</th>
       </tr>
     </thead>
     <tbody>
@@ -72,10 +74,10 @@
           <span class="progress-text">{{ r.handled_count }}/{{ r.total_count }}</span>
         </td>
         <td>
-          {% if r.is_closed %}<span class="badge closed">סגור</span>
-          {% elif r.is_untouched %}<span class="badge pending">טרם נרשמו הערות</span>
-          {% elif r.can_close %}<span class="badge ready">מוכן לסגירה</span>
-          {% else %}<span class="badge open">בטיפול</span>{% endif %}
+          {% if r.is_closed %}<span class="badge closed">{{ r.stage_label }}</span>
+          {% elif r.can_close %}<span class="badge ready">{{ r.stage_label }}</span>
+          {% elif r.stage == 'awaiting_answers' %}<span class="badge open">{{ r.stage_label }}</span>
+          {% else %}<span class="badge pending">{{ r.stage_label }}</span>{% endif %}
         </td>
       </tr>
       {% endfor %}

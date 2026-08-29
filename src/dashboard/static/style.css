@@ -226,3 +226,41 @@ ul.notes { list-style: none; padding: 0; margin: 0; }
 
 tr.handled td.struck { text-decoration: line-through; color: var(--muted); }
 .guidelines-list { margin: 0; padding-inline-start: 22px; line-height: 1.7; }
+
+/* ===== פס השלבים ===== */
+ol.stages {
+  display: flex; gap: 10px; list-style: none; padding: 0; margin: 0 0 20px;
+  flex-wrap: wrap;
+}
+.stages .stage {
+  flex: 1 1 200px; background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 16px; display: grid;
+  grid-template-columns: auto 1fr; gap: 2px 10px; align-items: center;
+  opacity: 0.6;
+}
+.stages .stage.current, .stages .stage.done { opacity: 1; }
+.stages .stage.current { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+.stages .stage.done { border-color: #15803d; }
+.stage-num {
+  grid-row: span 2; width: 30px; height: 30px; border-radius: 50%;
+  background: #eef1f6; color: var(--muted);
+  display: flex; align-items: center; justify-content: center; font-weight: 700;
+}
+.stages .stage.current .stage-num { background: var(--primary); color: #fff; }
+.stages .stage.done .stage-num { background: #15803d; color: #fff; }
+.stage-name { font-weight: 600; }
+.stage-hint { color: var(--muted); font-size: 0.8rem; }
+
+/* ===== שדות ההערה ===== */
+.note-topic { font-weight: 700; margin-bottom: 4px; }
+.note-field { font-size: 0.88rem; margin-top: 5px; color: #374151; }
+.field-label { color: var(--muted); }
+.note-actions form { flex-direction: column; align-items: stretch; gap: 5px; min-width: 230px; }
+.note-actions textarea { font-size: 0.85rem; }
+.single-note { margin-top: 18px; }
+.single-note summary { cursor: pointer; color: var(--primary); font-size: 0.92rem; }
+.single-note form { margin-top: 14px; }
+.note.sev-high { border-inline-start-color: var(--danger); background: #fffbfb; }
+.note.sev-low { border-inline-start-color: var(--muted); }
+.note.sev-high .chip.sev { background: #fde8e7; color: var(--danger); }
+input[type="file"] { padding: 7px; border: 1px solid var(--border); border-radius: 6px; background: #fff; }

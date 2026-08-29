@@ -57,6 +57,11 @@ def create_app(config: dict | None = None) -> Flask:
     app.config["CLOSURE_STORE"] = ClosureStore(
         closure_cfg.get("path", "state/reports_closure.json")
     )
+    # גבול לגודל טיוטה שנטענת. טיוטת דוחות היא PDF של כמה מאות KB;
+    # 32MB משאיר מרווח נוח בלי לאפשר העלאה שתמלא את הדיסק.
+    app.config["MAX_CONTENT_LENGTH"] = int(
+        closure_cfg.get("max_upload_mb", 32) * 1024 * 1024
+    )
 
     from .reports_views import bp as reports_bp
     from .views import bp

@@ -1,38 +1,46 @@
-"""שמירה וטעינה של דוחות והערות סגירה.
+"""שמירה וטעינה של דוחות, טיוטות והערות.
 
-הנתונים נשמרים בקובץ JSON אחד (ברירת מחדל ``state/reports_closure.json``).
-הכתיבה אטומית - קודם לקובץ זמני ואז ``os.replace`` - כדי שנפילה באמצע
-כתיבה לא תשאיר קובץ חצי-כתוב ותאבד הערות.
+הנתונים נשמרים בקובץ JSON אחד (ברירת מחדל ``state/reports_closure.json``),
+וקבצי הטיוטות לצידו בתיקיית ``drafts``. הכתיבה אטומית - קודם לקובץ זמני ואז
+``os.replace`` - כדי שנפילה באמצע כתיבה לא תשאיר קובץ חצי-כתוב.
 
-כל שינוי במצב הערה נרשם ב-``history`` שלה. סימון "בוצע" אינו מוחק כלום:
-ההערה יורדת מרשימת הפתוחות ועוברת לרשימת המבוצעות, עם מי סימן ומתי.
+שני כללים שהמאגר אוכף ולא מאפשר לעקוף:
+
+* **אין סגירת הערה בלי תשובה** - ``mark_done`` דורש טקסט תשובה.
+* **אין סגירת דוח כל עוד נותרה הערה פתוחה**, ורק אחרי שנטענה טיוטה
+  ונרשמו הערות.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
 import threading
 from pathlib import Path
 
 from .models import (
     NOTE_CANCELLED,
-    NOTE_STATUS_LABELS,
     NOTE_DONE,
     NOTE_OPEN,
+    NOTE_STATUS_LABELS,
     REPORT_CLOSED,
     REPORT_OPEN,
-    SEV_NORMAL,
+    SEV_MEDIUM,
+    STAGE_AWAITING_NOTES,
+    STAGE_NO_DRAFT,
     ClosureError,
+    Draft,
     Note,
     Report,
+    normalize_severity,
     now_iso,
     parse_amount,
 )
 from .parser import parse_notes_text
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class ClosureStore:
@@ -40,6 +48,7 @@ class ClosureStore:
 
     def __init__(self, path: str | os.PathLike = "state/reports_closure.json"):
         self.path = Path(path)
+        self.drafts_dir = self.path.parent / "drafts"
         self._lock = threading.RLock()
 
     # ------------------------------------------------------------------
@@ -63,7 +72,6 @@ class ClosureStore:
     def _write_raw(self, data: dict) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         data["version"] = SCHEMA_VERSION
-        # כתיבה אטומית: קובץ זמני באותה תיקייה ואז החלפה.
         fd, tmp_name = tempfile.mkstemp(dir=str(self.path.parent), suffix=".tmp")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -83,7 +91,6 @@ class ClosureStore:
     # ------------------------------------------------------------------
 
     def list_reports(self, status: str | None = None, query: str = "") -> list[Report]:
-        """מחזיר דוחות, החדשים קודם. ``status`` מסנן פתוח/סגור, ``query`` מחפש בשם."""
         with self._lock:
             reports = self._load_reports(self._read_raw())
         if status:
@@ -109,7 +116,8 @@ class ClosureStore:
         client_name: str,
         period: str = "",
         client_id: str = "",
-        report_type: str = "דוח שנתי",
+        report_type: str = "דוחות כספיים",
+        prepared_by: str = "",
         created_by: str = "",
     ) -> Report:
         client_name = (client_name or "").strip()
@@ -119,7 +127,8 @@ class ClosureStore:
             client_name=client_name,
             period=(period or "").strip(),
             client_id=(client_id or "").strip(),
-            report_type=(report_type or "דוח שנתי").strip(),
+            report_type=(report_type or "דוחות כספיים").strip(),
+            prepared_by=(prepared_by or "").strip(),
             created_by=created_by,
         )
         with self._lock:
@@ -136,16 +145,21 @@ class ClosureStore:
                 raise ClosureError("הדוח המבוקש לא נמצא.")
             data["reports"] = remaining
             self._write_raw(data)
+        shutil.rmtree(self.drafts_dir / report_id, ignore_errors=True)
 
     def close_report(self, report_id: str, by: str = "") -> Report:
-        """סוגר דוח. נכשל כל עוד נותרה בו הערה פתוחה אחת."""
+        """סוגר דוח. נכשל כשאין טיוטה, כשלא נרשמו הערות, או כשנותרה הערה פתוחה."""
 
         def mutate(report: Report) -> None:
             if report.is_closed:
                 raise ClosureError("הדוח כבר סגור.")
+            if report.stage == STAGE_NO_DRAFT:
+                raise ClosureError("לא ניתן לסגור: טרם נטענה טיוטה.")
+            if report.stage == STAGE_AWAITING_NOTES:
+                raise ClosureError("לא ניתן לסגור: טרם נרשמו הערות על הטיוטה.")
             if report.open_count:
                 raise ClosureError(
-                    f"לא ניתן לסגור: נותרו {report.open_count} הערות פתוחות."
+                    f"לא ניתן לסגור: {report.open_count} הערות עדיין ממתינות לתשובה."
                 )
             report.status = REPORT_CLOSED
             report.closed_at = now_iso()
@@ -164,6 +178,53 @@ class ClosureStore:
         return self._mutate_report(report_id, mutate)
 
     # ------------------------------------------------------------------
+    # טיוטות
+    # ------------------------------------------------------------------
+
+    def draft_path(self, report_id: str, stored_name: str) -> Path:
+        return self.drafts_dir / report_id / stored_name
+
+    def add_draft(
+        self,
+        report_id: str,
+        filename: str,
+        content: bytes,
+        uploaded_by: str = "",
+        note: str = "",
+        stored_name: str | None = None,
+    ) -> Draft:
+        """שומר טיוטה חדשה. כל טעינה היא גרסה נוספת - הקודמות נשמרות."""
+        filename = (filename or "").strip()
+        if not filename:
+            raise ClosureError("לא נבחר קובץ טיוטה.")
+        if not content:
+            raise ClosureError("קובץ הטיוטה ריק.")
+
+        report = self.get_report(report_id)
+        version = len(report.drafts) + 1
+        suffix = Path(filename).suffix.lower()[:10]
+        stored = stored_name or f"v{version}-{now_iso()[:10]}{suffix}"
+
+        target = self.draft_path(report_id, stored)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+
+        draft = Draft(
+            filename=filename,
+            stored_name=stored,
+            version=version,
+            uploaded_by=uploaded_by,
+            note=(note or "").strip(),
+            size=len(content),
+        )
+
+        def mutate(report: Report) -> None:
+            report.drafts.append(draft)
+
+        self._mutate_report(report_id, mutate)
+        return draft
+
+    # ------------------------------------------------------------------
     # הערות
     # ------------------------------------------------------------------
 
@@ -171,8 +232,11 @@ class ClosureStore:
         self,
         report_id: str,
         text: str,
-        category: str = "כללי",
-        severity: str = SEV_NORMAL,
+        topic: str = "",
+        severity: str = SEV_MEDIUM,
+        impact: str = "",
+        recommendation: str = "",
+        reference: str = "",
         assignee: str = "",
         amount=None,
         source: str = "",
@@ -180,11 +244,14 @@ class ClosureStore:
     ) -> Note:
         text = (text or "").strip()
         if not text:
-            raise ClosureError("חובה להזין תוכן להערה.")
+            raise ClosureError("חובה להזין את תוכן ההערה.")
         note = Note(
             text=text,
-            category=(category or "כללי").strip(),
-            severity=severity or SEV_NORMAL,
+            topic=(topic or "").strip(),
+            severity=normalize_severity(severity),
+            impact=(impact or "").strip(),
+            recommendation=(recommendation or "").strip(),
+            reference=(reference or "").strip(),
             assignee=(assignee or "").strip(),
             amount=parse_amount(amount),
             source=(source or "").strip(),
@@ -192,12 +259,7 @@ class ClosureStore:
         )
 
         def mutate(report: Report) -> None:
-            # הוספת הערה לדוח סגור פותחת אותו מחדש - אחרת ההערה הייתה
-            # נבלעת בדוח שכבר "נסגר".
-            if report.is_closed:
-                report.status = REPORT_OPEN
-                report.closed_at = None
-                report.closed_by = ""
+            self._reopen_if_closed(report)
             report.notes.append(note)
 
         self._mutate_report(report_id, mutate)
@@ -209,18 +271,21 @@ class ClosureStore:
         raw_text: str,
         source: str = "",
         created_by: str = "",
-        default_category: str = "כללי",
+        default_topic: str = "",
     ) -> list[Note]:
-        """קולט הערות שהודבקו כטקסט חופשי. מחזיר את ההערות שנוספו."""
-        parsed = parse_notes_text(raw_text, default_category=default_category)
+        """קולט טבלת הערות או רשימת הערות שהודבקה. מחזיר את ההערות שנוספו."""
+        parsed = parse_notes_text(raw_text, default_topic=default_topic)
         if not parsed:
             raise ClosureError("לא נמצאו הערות בטקסט שהודבק.")
         added = [
             Note(
                 text=item["text"],
-                category=item["category"],
-                severity=item["severity"],
-                amount=item["amount"],
+                topic=item.get("topic", ""),
+                severity=normalize_severity(item.get("severity")),
+                impact=item.get("impact", ""),
+                recommendation=item.get("recommendation", ""),
+                reference=item.get("reference", ""),
+                amount=item.get("amount"),
                 source=source,
                 created_by=created_by,
             )
@@ -228,33 +293,33 @@ class ClosureStore:
         ]
 
         def mutate(report: Report) -> None:
-            if report.is_closed:
-                report.status = REPORT_OPEN
-                report.closed_at = None
-                report.closed_by = ""
+            self._reopen_if_closed(report)
             report.notes.extend(added)
 
         self._mutate_report(report_id, mutate)
         return added
 
-    def mark_done(
-        self, report_id: str, note_id: str, by: str = "", comment: str = ""
-    ) -> Note:
-        """מסמן הערה כבוצעה - היא יורדת מרשימת ההערות הפתוחות בדוח."""
-        return self._set_note_status(report_id, note_id, NOTE_DONE, by, comment)
+    def mark_done(self, report_id: str, note_id: str, by: str = "", answer: str = "") -> Note:
+        """מסמן הערה כבוצעה. **חובה תשובה** - בלעדיה הפעולה נדחית."""
+        if not (answer or "").strip():
+            raise ClosureError(
+                "חובה לרשום תשובה להערה לפני סימונה כבוצעה. "
+                "מה נבדק, מה תוקן, או מהי התשובה לשאלה?"
+            )
+        return self._set_note_status(report_id, note_id, NOTE_DONE, by, answer)
 
-    def cancel_note(
-        self, report_id: str, note_id: str, by: str = "", comment: str = ""
-    ) -> Note:
-        """מבטל הערה שאינה רלוונטית - יורדת מהרשימה בלי להיחשב כבוצעה."""
-        return self._set_note_status(report_id, note_id, NOTE_CANCELLED, by, comment)
+    def cancel_note(self, report_id: str, note_id: str, by: str = "", answer: str = "") -> Note:
+        """מבטל הערה שאינה רלוונטית. גם כאן נדרש נימוק - למה ירדה בלי טיפול."""
+        if not (answer or "").strip():
+            raise ClosureError("חובה לנמק מדוע ההערה אינה רלוונטית.")
+        return self._set_note_status(report_id, note_id, NOTE_CANCELLED, by, answer)
 
     def reopen_note(self, report_id: str, note_id: str, by: str = "") -> Note:
-        """מחזיר הערה שסומנה בטעות חזרה לרשימת הפתוחות."""
+        """מחזיר הערה לרשימת הפתוחות. התשובה הקודמת נשמרת בהיסטוריה."""
         return self._set_note_status(report_id, note_id, NOTE_OPEN, by, "")
 
     def _set_note_status(
-        self, report_id: str, note_id: str, status: str, by: str, comment: str
+        self, report_id: str, note_id: str, status: str, by: str, answer: str
     ) -> Note:
         result: dict = {}
 
@@ -266,29 +331,27 @@ class ClosureStore:
                 label = NOTE_STATUS_LABELS.get(status, status)
                 raise ClosureError(f"ההערה כבר במצב '{label}'.")
             previous = note.status
+            previous_answer = note.answer
             note.status = status
             if status == NOTE_OPEN:
-                note.done_at = None
-                note.done_by = ""
-                note.done_comment = ""
+                note.answer = ""
+                note.answered_at = None
+                note.answered_by = ""
             else:
-                note.done_at = now_iso()
-                note.done_by = by
-                note.done_comment = (comment or "").strip()
+                note.answer = (answer or "").strip()
+                note.answered_at = now_iso()
+                note.answered_by = by
             note.history.append(
                 {
                     "at": now_iso(),
                     "by": by,
                     "from": previous,
                     "to": status,
-                    "comment": (comment or "").strip(),
+                    "answer": (answer or "").strip() or previous_answer,
                 }
             )
-            # פתיחת הערה בדוח סגור מחזירה את הדוח לטיפול.
-            if status == NOTE_OPEN and report.is_closed:
-                report.status = REPORT_OPEN
-                report.closed_at = None
-                report.closed_by = ""
+            if status == NOTE_OPEN:
+                self._reopen_if_closed(report)
             result["note"] = note
 
         self._mutate_report(report_id, mutate)
@@ -299,7 +362,6 @@ class ClosureStore:
     # ------------------------------------------------------------------
 
     def get_guidelines(self) -> list[str]:
-        """ההנחיות הקבועות לסקירת דוחות - נשמרות כאן כדי שלא יאבדו בין סשנים."""
         with self._lock:
             return list(self._read_raw().get("guidelines") or [])
 
@@ -317,6 +379,14 @@ class ClosureStore:
     # ------------------------------------------------------------------
     # עזר
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _reopen_if_closed(report: Report) -> None:
+        """הערה חדשה או הערה שנפתחה מחדש מחזירות דוח סגור לטיפול."""
+        if report.is_closed:
+            report.status = REPORT_OPEN
+            report.closed_at = None
+            report.closed_by = ""
 
     def _mutate_report(self, report_id: str, mutate) -> Report:
         """טוען, משנה דוח אחד ושומר - הכל תחת נעילה, כדי שלא יאבדו עדכונים."""
@@ -341,9 +411,9 @@ class ClosureStore:
             "reports_closed": len(reports) - len(open_reports),
             "notes_open": sum(r.open_count for r in open_reports),
             "notes_done": sum(len(r.done_notes) for r in reports),
-            # רק דוחות שנסקרו והערותיהם טופלו - לא דוחות שטרם נרשמה בהם הערה
-            "ready_to_close": sum(
-                1 for r in open_reports if r.can_close and not r.is_untouched
+            "ready_to_close": sum(1 for r in open_reports if r.can_close),
+            "awaiting_notes": sum(
+                1 for r in open_reports if r.stage == STAGE_AWAITING_NOTES
             ),
-            "awaiting_notes": sum(1 for r in open_reports if r.is_untouched),
+            "awaiting_draft": sum(1 for r in open_reports if r.stage == STAGE_NO_DRAFT),
         }

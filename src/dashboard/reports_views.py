@@ -1,4 +1,4 @@
-"""מסלולי מערכת סגירת הדוחות הכספיים בדשבורד.
+"""מסלולי מערכת סקירת וסגירת הדוחות הכספיים.
 
 כתובת הבסיס: ``/reports``. כל המסלולים דורשים משתמש מחובר, וכל פעולה
 שמשנה נתונים היא POST עם טוקן CSRF - כדי שקישור חיצוני לא יוכל לסמן
@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 from flask import (
     Blueprint,
@@ -19,16 +20,18 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_file,
     url_for,
 )
 
 from ..reports_closure import (
-    CATEGORIES,
+    KNOWN_TOPICS,
     NOTE_STATUS_LABELS,
     REPORT_CLOSED,
     REPORT_OPEN,
     REPORT_STATUS_LABELS,
     SEVERITY_LABELS,
+    STAGE_LABELS,
     ClosureError,
 )
 from .auth import login_required, validate_csrf
@@ -42,7 +45,13 @@ except Exception:  # pragma: no cover - תלוי בסביבת ההרצה
 
 bp = Blueprint("reports", __name__, url_prefix="/reports")
 
-REPORT_TYPES = ["דוח שנתי", "דוח רבעוני", "מאזן בוחן", "דוח למוסדות", "אחר"]
+REPORT_TYPES = ["דוחות כספיים", "דוח רבעוני", "מאזן בוחן", "דוח למוסדות", "אחר"]
+
+# סוגי קבצים מותרים לטיוטה. רשימה סגורה - לא מעלים לשרת מה שלא צריך.
+ALLOWED_DRAFT_SUFFIXES = {
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".csv",
+    ".png", ".jpg", ".jpeg", ".txt",
+}
 
 
 def store():
@@ -74,7 +83,6 @@ def format_dt(value: str | None) -> str:
 
 @bp.app_template_filter("ils")
 def format_ils(value) -> str:
-    """סכום בשקלים עם מפריד אלפים. ריק כשאין סכום."""
     if value is None or value == "":
         return ""
     try:
@@ -83,13 +91,27 @@ def format_ils(value) -> str:
         return str(value)
 
 
+@bp.app_template_filter("filesize")
+def format_filesize(value) -> str:
+    try:
+        size = float(value)
+    except (TypeError, ValueError):
+        return ""
+    for unit in ("B", "KB", "MB"):
+        if size < 1024 or unit == "MB":
+            return f"{size:,.0f} {unit}" if unit == "B" else f"{size:,.1f} {unit}"
+        size /= 1024
+    return ""
+
+
 @bp.app_context_processor
 def inject_labels():
     return {
         "SEVERITY_LABELS": SEVERITY_LABELS,
         "NOTE_STATUS_LABELS": NOTE_STATUS_LABELS,
         "REPORT_STATUS_LABELS": REPORT_STATUS_LABELS,
-        "CATEGORIES": CATEGORIES,
+        "STAGE_LABELS": STAGE_LABELS,
+        "KNOWN_TOPICS": KNOWN_TOPICS,
         "REPORT_TYPES": REPORT_TYPES,
     }
 
@@ -127,13 +149,14 @@ def new_report():
             client_name=request.form.get("client_name", ""),
             period=request.form.get("period", ""),
             client_id=request.form.get("client_id", ""),
-            report_type=request.form.get("report_type", "דוח שנתי"),
+            report_type=request.form.get("report_type", "דוחות כספיים"),
+            prepared_by=request.form.get("prepared_by", ""),
             created_by=_actor(),
         )
     except ClosureError as exc:
         flash(str(exc), "error")
         return redirect(url_for("reports.index"))
-    flash(f"נפתח דוח חדש: {report.title}", "success")
+    flash(f"נפתח דוח חדש: {report.title}. השלב הבא — טעינת הטיוטה.", "success")
     return redirect(url_for("reports.detail", report_id=report.id))
 
 
@@ -157,6 +180,60 @@ def detail(report_id: str):
     )
 
 
+# --- שלב 1: טעינת הטיוטה ---
+
+
+@bp.route("/<report_id>/draft", methods=["POST"])
+@login_required
+def upload_draft(report_id: str):
+    _require_csrf()
+    uploaded = request.files.get("draft")
+    if uploaded is None or not uploaded.filename:
+        flash("לא נבחר קובץ טיוטה.", "error")
+        return redirect(url_for("reports.detail", report_id=report_id))
+
+    suffix = Path(uploaded.filename).suffix.lower()
+    if suffix not in ALLOWED_DRAFT_SUFFIXES:
+        allowed = ", ".join(sorted(ALLOWED_DRAFT_SUFFIXES))
+        flash(f"סוג קובץ לא נתמך ({suffix or 'ללא סיומת'}). מותר: {allowed}", "error")
+        return redirect(url_for("reports.detail", report_id=report_id))
+
+    try:
+        draft = store().add_draft(
+            report_id,
+            filename=uploaded.filename,
+            content=uploaded.read(),
+            uploaded_by=_actor(),
+            note=request.form.get("note", ""),
+        )
+        flash(f"נטענה טיוטה (גרסה {draft.version}). השלב הבא — רישום ההערות.", "success")
+    except ClosureError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("reports.detail", report_id=report_id))
+
+
+@bp.route("/<report_id>/draft/<int:version>")
+@login_required
+def download_draft(report_id: str, version: int):
+    try:
+        report = store().get_report(report_id)
+    except ClosureError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("reports.index"))
+
+    draft = next((d for d in report.drafts if d.version == version), None)
+    if draft is None:
+        abort(404)
+    path = store().draft_path(report_id, draft.stored_name)
+    if not path.exists():
+        flash("קובץ הטיוטה חסר מהדיסק.", "error")
+        return redirect(url_for("reports.detail", report_id=report_id))
+    return send_file(path, as_attachment=True, download_name=draft.filename)
+
+
+# --- שלב 2: רישום ההערות ---
+
+
 @bp.route("/<report_id>/notes", methods=["POST"])
 @login_required
 def add_note(report_id: str):
@@ -165,8 +242,11 @@ def add_note(report_id: str):
         store().add_note(
             report_id,
             text=request.form.get("text", ""),
-            category=request.form.get("category", "כללי"),
-            severity=request.form.get("severity", "normal"),
+            topic=request.form.get("topic", ""),
+            severity=request.form.get("severity", "medium"),
+            impact=request.form.get("impact", ""),
+            recommendation=request.form.get("recommendation", ""),
+            reference=request.form.get("reference", ""),
             assignee=request.form.get("assignee", ""),
             amount=request.form.get("amount", ""),
             source=request.form.get("source", ""),
@@ -186,7 +266,7 @@ def import_notes(report_id: str):
         added = store().import_notes(
             report_id,
             raw_text=request.form.get("raw_text", ""),
-            source=request.form.get("source", "").strip() or "ייבוא הערות סקירה",
+            source=request.form.get("source", "").strip() or "טבלת הערות סקירה",
             created_by=_actor(),
         )
         flash(f"נקלטו {len(added)} הערות.", "success")
@@ -195,23 +275,26 @@ def import_notes(report_id: str):
     return redirect(url_for("reports.detail", report_id=report_id))
 
 
+# --- שלב 3: תשובות וסגירה ---
+
+
 @bp.route("/<report_id>/notes/<note_id>/<action>", methods=["POST"])
 @login_required
 def note_action(report_id: str, note_id: str, action: str):
-    """סימון הערה כבוצעה / ביטולה / החזרתה לפתוחות."""
+    """מענה להערה (בוצע), ביטולה, או החזרתה לרשימת הממתינות."""
     _require_csrf()
-    comment = request.form.get("comment", "")
+    answer = request.form.get("answer", "")
     actions = {
-        "done": lambda: store().mark_done(report_id, note_id, _actor(), comment),
-        "cancel": lambda: store().cancel_note(report_id, note_id, _actor(), comment),
+        "done": lambda: store().mark_done(report_id, note_id, _actor(), answer),
+        "cancel": lambda: store().cancel_note(report_id, note_id, _actor(), answer),
         "reopen": lambda: store().reopen_note(report_id, note_id, _actor()),
     }
     if action not in actions:
         abort(404)
     messages = {
-        "done": "ההערה סומנה כבוצעה וירדה מהרשימה.",
-        "cancel": "ההערה בוטלה וירדה מהרשימה.",
-        "reopen": "ההערה הוחזרה לרשימת הפתוחות.",
+        "done": "התשובה נרשמה. ההערה סומנה כבוצעה וירדה מהרשימה.",
+        "cancel": "ההערה בוטלה עם נימוק וירדה מהרשימה.",
+        "reopen": "ההערה הוחזרה לרשימת הממתינות לתשובה.",
     }
     try:
         actions[action]()
@@ -227,7 +310,7 @@ def close_report(report_id: str):
     _require_csrf()
     try:
         store().close_report(report_id, by=_actor())
-        flash("הדוח נסגר. כל ההערות טופלו.", "success")
+        flash("הדוח נסגר סופית. כל ההערות נענו.", "success")
     except ClosureError as exc:
         flash(str(exc), "error")
     return redirect(url_for("reports.detail", report_id=report_id))
@@ -248,20 +331,35 @@ def reopen_report(report_id: str):
 @bp.route("/<report_id>/export.txt")
 @login_required
 def export_open_notes(report_id: str):
-    """מייצא את ההערות הפתוחות כטקסט - להעברה ללקוח או לעובד."""
+    """מייצא את ההערות שממתינות לתשובה - להעברה למי שמכין את הטיוטה."""
     try:
         report = store().get_report(report_id)
     except ClosureError as exc:
         flash(str(exc), "error")
         return redirect(url_for("reports.index"))
 
-    lines = [f"הערות פתוחות - {report.title} ({report.report_type})", "=" * 50]
+    lines = [
+        f"הערות הממתינות לתשובה - {report.title} ({report.report_type})",
+        f"שלב: {report.stage_label}",
+        "=" * 60,
+    ]
     if not report.open_notes:
-        lines.append("אין הערות פתוחות. הדוח מוכן לסגירה.")
+        lines.append("אין הערות פתוחות. כל ההערות נענו.")
     for index, note in enumerate(report.sorted_open_notes(), start=1):
-        amount = f" [{format_ils(note.amount)}]" if note.amount is not None else ""
-        marker = "!" if note.severity == "critical" else ""
-        lines.append(f"{index}. {marker}[{note.category}] {note.text}{amount}")
+        severity = SEVERITY_LABELS.get(note.severity, note.severity)
+        header = f"{index}. [{severity}]"
+        if note.topic:
+            header += f" {note.topic}"
+        lines.append(header)
+        lines.append(f"   הממצא: {note.text}")
+        if note.impact:
+            lines.append(f"   השלכה: {note.impact}")
+        if note.recommendation:
+            lines.append(f"   המלצה: {note.recommendation}")
+        if note.reference:
+            lines.append(f"   הפניה: {note.reference}")
+        lines.append("   תשובה: ______________________________")
+        lines.append("")
     body = "\n".join(lines) + "\n"
     return Response(
         body,
