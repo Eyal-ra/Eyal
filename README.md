@@ -93,11 +93,29 @@ python scripts/setup_hostname.py
 
 ניהול המסלול מטיוטת הדוחות ועד הסגירה הסופית.
 
-### הפעלה - פעם אחת, פקודה אחת
+### הפעלה - המערכת רצה על פורט משלה
+
+לוח הבקרה הראשי (9999) הוא מערכת נפרדת. מערכת סקירת הדוחות עולה לצידו
+על **פורט 9998**, וכרטיס בלוח מפנה אליה.
 
 ```bash
 pip install -r requirements.txt
-python scripts/start_dashboard.py
+python scripts/start_reports.py          # http://localhost:9998
+```
+
+ב-Windows: לחיצה כפולה על **`start-reports.bat`**.
+
+### הכרטיס ללוח הבקרה
+
+`docs/dashboard_card.html` הוא כרטיס מוכן להדבקה בלוח 9999, במחלקות של
+הלוח. `docs/dashboard_card_standalone.html` הוא אותו כרטיס עם עיצוב עצמאי,
+למקרה ששמות המחלקות שונים. שניהם מפנים ל-`http://eyal:9998/reports/` -
+החליפו את שם המחשב אם הוא אחר.
+
+### הפעלת הדשבורד הכללי שבריפו (אופציונלי)
+
+```bash
+python scripts/start_dashboard.py        # http://localhost:9999
 ```
 
 בהרצה הראשונה הסקריפט מבקש שם משתמש וסיסמה, יוצר `config.yaml` עם מפתח
@@ -106,15 +124,10 @@ python scripts/start_dashboard.py
 
 ואז בדפדפן:
 
-```
-http://localhost:9999            הדשבורד
-http://localhost:9999/reports    סקירת וסגירת דוחות כספיים
-```
-
 | צריך | פקודה |
 |---|---|
-| להחליף סיסמה | `python scripts/start_dashboard.py --reset-user` |
-| הפורט תפוס | `python scripts/start_dashboard.py --port 9998` |
+| להחליף סיסמה | `python scripts/start_reports.py --reset-user` |
+| הפורט תפוס | `python scripts/start_reports.py --port 9997` |
 | כתובת ידידותית במקום localhost | `python scripts/setup_hostname.py` |
 
 גישה ממחשב אחר במשרד עובדת כברירת מחדל (`host: 0.0.0.0`) בכתובת

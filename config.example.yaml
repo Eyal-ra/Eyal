@@ -52,3 +52,5 @@ reports_closure:
   # קבצי הטיוטות נשמרים ב-state/drafts/. כדאי לגבות את שניהם.
   path: "state/reports_closure.json"
   max_upload_mb: 32        # גודל מרבי לטיוטה שנטענת
+  host: "0.0.0.0"          # נגיש מכל המחשבים ברשת
+  port: 9998               # המערכת עולה על פורט משלה, לצד לוח הבקרה ב-9999
