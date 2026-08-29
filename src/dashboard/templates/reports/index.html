@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}סגירת דוחות כספיים{% endblock %}
+{% block content %}
+<h1>סקירת וסגירת דוחות כספיים</h1>
+<p class="subtitle">טיוטה → הערות סקירה → תשובה לכל הערה → סגירה סופית. כל הערה נסגרת רק עם תשובה כתובה.</p>
+
+<div class="tiles">
+  <div class="tile"><span class="tile-num">{{ summary.reports_open }}</span><span class="tile-label">דוחות בטיפול</span></div>
+  <div class="tile"><span class="tile-num">{{ summary.notes_open }}</span><span class="tile-label">הערות ללא תשובה</span></div>
+  <div class="tile ok"><span class="tile-num">{{ summary.ready_to_close }}</span><span class="tile-label">מוכנים לסגירה</span></div>
+  <div class="tile pending"><span class="tile-num">{{ summary.awaiting_notes }}</span><span class="tile-label">ממתינים להערות</span></div>
+  <div class="tile pending"><span class="tile-num">{{ summary.awaiting_draft }}</span><span class="tile-label">ממתינים לטיוטה</span></div>
+  <div class="tile muted"><span class="tile-num">{{ summary.reports_closed }}</span><span class="tile-label">דוחות סגורים</span></div>
+</div>
+
+<section class="card">
+  <h2>פתיחת דוח לסקירה</h2>
+  <form method="post" action="{{ url_for('reports.new_report') }}" class="row-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>שם לקוח<input type="text" name="client_name" required placeholder="שם הלקוח כפי שמופיע בדוח"></label>
+    <label>ח.פ. / ת.ז.<input type="text" name="client_id" placeholder="514000000"></label>
+    <label>תקופה<input type="text" name="period" placeholder="2025"></label>
+    <label>סוג דוח
+      <select name="report_type">
+        {% for t in REPORT_TYPES %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>מכין הטיוטה<input type="text" name="prepared_by" placeholder="לינוי"></label>
+    <button type="submit">פתח דוח</button>
+  </form>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h2>הדוחות</h2>
+    <form method="get" class="filter-form">
+      <input type="search" name="q" value="{{ query }}" placeholder="חיפוש לקוח / ח.פ. / תקופה">
+      <select name="status" onchange="this.form.submit()">
+        <option value="open" {% if status == 'open' %}selected{% endif %}>בטיפול</option>
+        <option value="closed" {% if status == 'closed' %}selected{% endif %}>סגורים</option>
+        <option value="all" {% if status == 'all' %}selected{% endif %}>הכל</option>
+      </select>
+      <button type="submit">סנן</button>
+    </form>
+  </div>
+
+  {% if reports %}
+  <table class="submissions">
+    <thead>
+      <tr>
+        <th>לקוח</th>
+        <th>תקופה</th>
+        <th>סוג</th>
+        <th>ללא תשובה</th>
+        <th>התקדמות</th>
+        <th>שלב</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in reports %}
+      <tr>
+        <td><a href="{{ url_for('reports.detail', report_id=r.id) }}">{{ r.client_name }}</a>
+          {% if r.client_id %}<span class="muted-inline">{{ r.client_id }}</span>{% endif %}</td>
+        <td>{{ r.period }}</td>
+        <td>{{ r.report_type }}</td>
+        <td>
+          {% if r.open_count %}<span class="badge open">{{ r.open_count }}</span>
+          {% else %}<span class="badge done">0</span>{% endif %}
+        </td>
+        <td>
+          <div class="progress" title="{{ r.handled_count }} מתוך {{ r.total_count }}">
+            <div class="progress-bar" style="width: {{ r.progress_pct }}%"></div>
+          </div>
+          <span class="progress-text">{{ r.handled_count }}/{{ r.total_count }}</span>
+        </td>
+        <td>
+          {% if r.is_closed %}<span class="badge closed">{{ r.stage_label }}</span>
+          {% elif r.can_close %}<span class="badge ready">{{ r.stage_label }}</span>
+          {% elif r.stage == 'awaiting_answers' %}<span class="badge open">{{ r.stage_label }}</span>
+          {% else %}<span class="badge pending">{{ r.stage_label }}</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="alert info">אין דוחות להצגה. פתחו דוח חדש כדי להתחיל.</div>
+  {% endif %}
+</section>
+{% endblock %}

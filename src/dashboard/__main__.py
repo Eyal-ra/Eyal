@@ -7,7 +7,7 @@ def main() -> None:
     cfg = load_config()
     dash = cfg.get("dashboard", {}) or {}
     host = dash.get("host", "0.0.0.0")
-    port = int(dash.get("port", 80))
+    port = int(dash.get("port", 9999))
     hostname = dash.get("hostname", "cpateam-dash")
 
     app = create_app(cfg)

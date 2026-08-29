@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block title %}{{ report.title }} - סקירת דוחות{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>{{ report.client_name }}</h1>
+    <p class="subtitle">
+      {{ report.report_type }}{% if report.period %} · {{ report.period }}{% endif %}{% if report.client_id %} · ח.פ. {{ report.client_id }}{% endif %}{% if report.prepared_by %} · הוכן ע"י {{ report.prepared_by }}{% endif %}
+      {% if report.is_closed %} · נסגר ב-{{ report.closed_at|dt }} על ידי {{ report.closed_by }}{% endif %}
+    </p>
+  </div>
+  <a class="link-btn" href="{{ url_for('reports.index') }}">חזרה לרשימה</a>
+</div>
+
+{# --- פס השלבים --- #}
+<ol class="stages">
+  <li class="stage {{ 'done' if report.has_draft else 'current' }}">
+    <span class="stage-num">1</span>
+    <span class="stage-name">טיוטה</span>
+    <span class="stage-hint">{% if report.has_draft %}גרסה {{ report.latest_draft.version }} נטענה{% else %}ממתין לטעינה{% endif %}</span>
+  </li>
+  <li class="stage {{ 'done' if not report.is_untouched else ('current' if report.has_draft else '') }}">
+    <span class="stage-num">2</span>
+    <span class="stage-name">הערות סקירה</span>
+    <span class="stage-hint">{% if report.is_untouched %}טרם נרשמו{% else %}{{ report.total_count }} הערות{% endif %}</span>
+  </li>
+  <li class="stage {{ 'done' if report.is_closed else ('current' if report.open_count else '') }}">
+    <span class="stage-num">3</span>
+    <span class="stage-name">תשובות וסגירה</span>
+    <span class="stage-hint">{% if report.is_closed %}סגור{% elif report.open_count %}{{ report.open_count }} ממתינות לתשובה{% elif not report.is_untouched %}כולן נענו{% else %}—{% endif %}</span>
+  </li>
+</ol>
+
+<section class="card status-card">
+  <div class="progress big" title="{{ report.handled_count }} מתוך {{ report.total_count }}">
+    <div class="progress-bar" style="width: {{ report.progress_pct }}%"></div>
+  </div>
+  <p class="progress-summary">
+    {% if report.is_closed %}
+    <strong>הדוח סגור.</strong> כל {{ report.total_count }} ההערות נענו.
+    {% elif not report.has_draft %}
+    טרם נטענה טיוטה. טענו את הטיוטה כדי להתחיל.
+    {% elif report.is_untouched %}
+    הטיוטה נטענה. השלב הבא — רישום הערות הסקירה.
+    {% elif report.open_count %}
+    <strong>{{ report.open_count }}</strong> הערות ממתינות לתשובה, מתוך {{ report.total_count }}
+    ({{ report.done_notes|length }} נענו{% if report.cancelled_notes %}, {{ report.cancelled_notes|length }} בוטלו{% endif %}).
+    {% else %}
+    <strong>כל ההערות נענו.</strong> אפשר לסגור את הדוח סופית.
+    {% endif %}
+  </p>
+
+  <div class="actions">
+    <a class="link-btn" href="{{ url_for('reports.export_open_notes', report_id=report.id) }}">ייצוא ההערות הפתוחות</a>
+    {% if report.is_closed %}
+    <form method="post" action="{{ url_for('reports.reopen_report', report_id=report.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="secondary">החזר לטיפול</button>
+    </form>
+    {% else %}
+    <form method="post" action="{{ url_for('reports.close_report', report_id=report.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" {% if not report.can_close %}disabled title="{{ report.stage_label }}"{% endif %}>סגור סופית</button>
+    </form>
+    {% if not report.can_close %}<span class="muted-inline">{{ report.stage_label }}</span>{% endif %}
+    {% endif %}
+  </div>
+</section>
+
+{# --- שלב 1: טיוטה --- #}
+<section class="card">
+  <h2>שלב 1 · טיוטת הדוחות</h2>
+  {% if report.drafts %}
+  <table class="submissions">
+    <thead><tr><th>גרסה</th><th>קובץ</th><th>הערת גרסה</th><th>נטען</th><th>גודל</th></tr></thead>
+    <tbody>
+      {% for d in report.drafts|reverse %}
+      <tr>
+        <td>{{ d.version }}{% if loop.first %} <span class="badge ready">אחרונה</span>{% endif %}</td>
+        <td><a href="{{ url_for('reports.download_draft', report_id=report.id, version=d.version) }}">{{ d.filename }}</a></td>
+        <td>{{ d.note }}</td>
+        <td class="muted-inline">{{ d.uploaded_at|dt }}{% if d.uploaded_by %} · {{ d.uploaded_by }}{% endif %}</td>
+        <td class="muted-inline">{{ d.size|filesize }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="alert info">טרם נטענה טיוטה.</div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('reports.upload_draft', report_id=report.id) }}"
+        enctype="multipart/form-data" class="row-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>קובץ הטיוטה<input type="file" name="draft" required
+      accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.png,.jpg,.jpeg,.txt"></label>
+    <label class="grow">הערת גרסה<input type="text" name="note" placeholder="טיוטה ראשונה"></label>
+    <button type="submit">{% if report.drafts %}טען גרסה חדשה{% else %}טען טיוטה{% endif %}</button>
+  </form>
+</section>
+
+{# --- שלב 3 (מוצג ראשון כי זו העבודה השוטפת): ההערות הממתינות --- #}
+<section class="card">
+  <h2>הערות הממתינות לתשובה ({{ report.open_count }})</h2>
+  {% if report.open_notes %}
+  <p class="subtitle">כל הערה נסגרת רק עם תשובה. בלי תשובה הכפתור לא יעבוד.</p>
+  <ul class="notes">
+    {% for note in report.sorted_open_notes() %}
+    <li class="note sev-{{ note.severity }}">
+      <div class="note-main">
+        {% if note.topic %}<div class="note-topic">{{ note.topic }}</div>{% endif %}
+        <div class="note-text">{{ note.text }}</div>
+        {% if note.impact %}<div class="note-field"><span class="field-label">השלכה כספית / מס:</span> {{ note.impact }}</div>{% endif %}
+        {% if note.recommendation %}<div class="note-field"><span class="field-label">המלצה לפעולה:</span> {{ note.recommendation }}</div>{% endif %}
+        <div class="note-meta">
+          <span class="chip sev">{{ SEVERITY_LABELS.get(note.severity, note.severity) }}</span>
+          {% if note.amount is not none %}<span class="chip amount">{{ note.amount|ils }}</span>{% endif %}
+          {% if note.reference %}<span class="chip">{{ note.reference }}</span>{% endif %}
+          {% if note.assignee %}<span class="chip">אחראי: {{ note.assignee }}</span>{% endif %}
+          {% if note.source %}<span class="chip src">{{ note.source }}</span>{% endif %}
+          <span class="muted-inline">{{ note.created_at|dt }}</span>
+        </div>
+      </div>
+      <div class="note-actions">
+        <form method="post" action="{{ url_for('reports.note_action', report_id=report.id, note_id=note.id, action='done') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <textarea name="answer" rows="2" required placeholder="התשובה / מה בוצע — חובה"></textarea>
+          <button type="submit" title="סמן כבוצע עם התשובה">✓ בוצע</button>
+        </form>
+        <form method="post" action="{{ url_for('reports.note_action', report_id=report.id, note_id=note.id, action='cancel') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <textarea name="answer" rows="2" required placeholder="למה ההערה אינה רלוונטית — חובה"></textarea>
+          <button type="submit" class="secondary">בטל</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% elif report.is_untouched %}
+  <div class="alert info">טרם נרשמו הערות. הדביקו את טבלת ההערות למטה.</div>
+  {% else %}
+  <div class="alert success">כל ההערות נענו — אפשר לסגור את הדוח.</div>
+  {% endif %}
+</section>
+
+{# --- שלב 2: הזנת ההערות --- #}
+<section class="card">
+  <h2>שלב 2 · הדבקת טבלת ההערות</h2>
+  <p class="subtitle">הדביקו את טבלת ההערות כמו שהיא — מגיליון או ממסמך. הכותרות
+    <code>חשיבות · נושא · הממצא / ההערה · השלכה כספית / מס · המלצה לפעולה · הפניה</code>
+    מזוהות לבד, בכל סדר. אפשר גם רשימה פשוטה, הערה בשורה.</p>
+  <form method="post" action="{{ url_for('reports.import_notes', report_id=report.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <textarea name="raw_text" rows="7" required placeholder="# &#9; חשיבות &#9; נושא &#9; הממצא / ההערה &#9; השלכה כספית / מס &#9; המלצה לפעולה &#9; הפניה"></textarea>
+    <div class="row-form">
+      <label class="grow">מקור ההערות<input type="text" name="source" placeholder="סקירת טיוטה 29/08"></label>
+      <button type="submit">קלוט הערות</button>
+    </div>
+  </form>
+
+  <details class="single-note">
+    <summary>הוספת הערה בודדת</summary>
+    <form method="post" action="{{ url_for('reports.add_note', report_id=report.id) }}" class="row-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="grow">נושא<input type="text" name="topic" list="topics" placeholder="אי-התאמה בהוצאות הפחת"></label>
+      <datalist id="topics">{% for t in KNOWN_TOPICS %}<option value="{{ t }}">{% endfor %}</datalist>
+      <label class="grow">הממצא / ההערה<input type="text" name="text" required></label>
+      <label>חשיבות
+        <select name="severity">
+          <option value="medium">בינונית</option>
+          <option value="high">גבוהה</option>
+          <option value="low">נמוכה</option>
+        </select>
+      </label>
+      <label class="grow">השלכה כספית / מס<input type="text" name="impact"></label>
+      <label class="grow">המלצה לפעולה<input type="text" name="recommendation"></label>
+      <label>הפניה<input type="text" name="reference" placeholder="ביאור 5"></label>
+      <button type="submit">הוסף</button>
+    </form>
+  </details>
+</section>
+
+{% if guidelines %}
+<section class="card">
+  <h2>הנחיות הסקירה הקבועות</h2>
+  <ol class="guidelines-list">{% for line in guidelines %}<li>{{ line }}</li>{% endfor %}</ol>
+  <p class="subtitle"><a href="{{ url_for('reports.guidelines') }}">עריכת ההנחיות</a></p>
+</section>
+{% endif %}
+
+{% if report.done_notes or report.cancelled_notes %}
+<section class="card">
+  <h2>נענו וירדו מהרשימה ({{ report.done_notes|length + report.cancelled_notes|length }})</h2>
+  <table class="submissions">
+    <thead>
+      <tr><th>נושא / הממצא</th><th>סטטוס</th><th>התשובה</th><th>מי ומתי</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for note in report.done_notes + report.cancelled_notes %}
+      <tr class="handled">
+        <td class="struck">{% if note.topic %}<strong>{{ note.topic }}</strong><br>{% endif %}{{ note.text }}</td>
+        <td><span class="badge {{ 'done' if note.status == 'done' else 'cancelled' }}">{{ NOTE_STATUS_LABELS.get(note.status, note.status) }}</span></td>
+        <td>{{ note.answer }}</td>
+        <td class="muted-inline">{{ note.answered_by }} · {{ note.answered_at|dt }}</td>
+        <td>
+          <form method="post" action="{{ url_for('reports.note_action', report_id=report.id, note_id=note.id, action='reopen') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="secondary small">פתח מחדש</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}

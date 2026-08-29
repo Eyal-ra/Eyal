@@ -5,6 +5,7 @@
   - מסך כניסה (login) פנימי
   - הצגת שם המשתמש המחובר בכל עמוד
   - כפתור יציאה (logout)
+  - מערכת סגירת דוחות כספיים (``/reports``)
 
 ההפעלה: ``python -m src.dashboard`` (קורא הגדרות מ-config.yaml).
 """
@@ -15,6 +16,8 @@ from pathlib import Path
 
 import yaml
 from flask import Flask
+
+from ..reports_closure import ClosureStore
 
 
 def load_config(path=None) -> dict:
@@ -49,7 +52,20 @@ def create_app(config: dict | None = None) -> Flask:
         SESSION_COOKIE_SAMESITE="Lax",
     )
 
+    # מאגר מערכת סגירת הדוחות הכספיים.
+    closure_cfg = cfg.get("reports_closure", {}) or {}
+    app.config["CLOSURE_STORE"] = ClosureStore(
+        closure_cfg.get("path", "state/reports_closure.json")
+    )
+    # גבול לגודל טיוטה שנטענת. טיוטת דוחות היא PDF של כמה מאות KB;
+    # 32MB משאיר מרווח נוח בלי לאפשר העלאה שתמלא את הדיסק.
+    app.config["MAX_CONTENT_LENGTH"] = int(
+        closure_cfg.get("max_upload_mb", 32) * 1024 * 1024
+    )
+
+    from .reports_views import bp as reports_bp
     from .views import bp
 
     app.register_blueprint(bp)
+    app.register_blueprint(reports_bp)
     return app
