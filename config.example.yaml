@@ -32,7 +32,7 @@ matching:
 
 dashboard:
   host: "0.0.0.0"          # 0.0.0.0 = נגיש מכל המחשבים ברשת; 127.0.0.1 = מקומי בלבד
-  port: 80                 # פורט 80 = בלי מספר פורט בכתובת. אם תפוס, השתמש למשל ב-8080
+  port: 9999               # הדשבורד עולה על http://localhost:9999
   hostname: "cpateam-dash" # הכתובת הידידותית. הריצו scripts/setup_hostname.py כדי להפעיל
   # מפתח קבוע לחתימת ה-sessions. צרו מחרוזת אקראית, למשל:
   #   python -c "import secrets; print(secrets.token_hex(32))"
@@ -46,3 +46,8 @@ dashboard:
     # - username: "office"
     #   display_name: "משרד"
     #   password: "1234"
+
+reports_closure:
+  # מערכת סגירת הדוחות הכספיים - כאן נשמרים הדוחות, ההערות וההנחיות.
+  # הקובץ הזה הוא מקור האמת של המערכת; כדאי לגבות אותו.
+  path: "state/reports_closure.json"

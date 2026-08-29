@@ -83,7 +83,12 @@ def logout():
 @login_required
 def index():
     submissions, data_error = _load_recent_submissions(current_app.config["APP_CONFIG"])
-    return render_template("index.html", submissions=submissions, data_error=data_error)
+    return render_template(
+        "index.html",
+        submissions=submissions,
+        data_error=data_error,
+        closure=current_app.config["CLOSURE_STORE"].summary(),
+    )
 
 
 def _load_recent_submissions(app_config: dict, limit: int = 10):

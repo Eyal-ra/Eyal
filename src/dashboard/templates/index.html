@@ -2,6 +2,20 @@
 {% block title %}עמוד ראשי - דשבורד צוות{% endblock %}
 {% block content %}
 <h1>שלום, {{ g.user.display_name }}</h1>
+
+<section class="card">
+  <div class="card-head">
+    <h2>סגירת דוחות כספיים</h2>
+    <a class="link-btn" href="{{ url_for('reports.index') }}">כניסה למערכת</a>
+  </div>
+  <div class="tiles">
+    <div class="tile"><span class="tile-num">{{ closure.reports_open }}</span><span class="tile-label">דוחות בטיפול</span></div>
+    <div class="tile"><span class="tile-num">{{ closure.notes_open }}</span><span class="tile-label">הערות פתוחות</span></div>
+    <div class="tile ok"><span class="tile-num">{{ closure.ready_to_close }}</span><span class="tile-label">מוכנים לסגירה</span></div>
+  </div>
+</section>
+
+<h2>הגשות אחרונות</h2>
 <p class="subtitle">הגשות אחרונות מ-Jotform הממתינות לסנכרון.</p>
 
 {% if data_error %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}הנחיות סקירה{% endblock %}
+{% block content %}
+<h1>הנחיות סקירת דוחות</h1>
+<p class="subtitle">ההנחיות נשמרות כאן ולא בסשן, ולכן הן זמינות בכל סקירה — גם אחרי סגירת הסשן.
+  הן מוצגות בעמוד כל דוח כרשימת בדיקה. שורה = הנחיה.</p>
+
+<section class="card">
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <textarea name="guidelines" rows="14" placeholder="לבדוק התאמת יתרות בנק לכל החשבונות&#10;לוודא שכל החשבוניות מעל 5,000 ₪ מגובות בתיעוד&#10;להשוות יתרות פתיחה לדוח שנה קודמת">{{ guidelines | join('\n') }}</textarea>
+    <div class="actions">
+      <button type="submit">שמור הנחיות</button>
+      <span class="muted-inline">{{ guidelines|length }} הנחיות שמורות</span>
+    </div>
+  </form>
+</section>
+
+{% if not guidelines %}
+<div class="alert info">טרם נרשמו הנחיות. רשמו כאן את ההנחיות הקבועות שלכם לסקירה — הן ילוו כל דוח מכאן והלאה.</div>
+{% endif %}
+{% endblock %}

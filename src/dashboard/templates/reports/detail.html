@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}{{ report.title }} - סגירת דוחות{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <div>
+    <h1>{{ report.client_name }}
+      {% if report.is_closed %}<span class="badge closed">סגור</span>
+      {% elif report.can_close %}<span class="badge ready">מוכן לסגירה</span>{% endif %}
+    </h1>
+    <p class="subtitle">
+      {{ report.report_type }}{% if report.period %} · {{ report.period }}{% endif %}{% if report.client_id %} · ח.פ. {{ report.client_id }}{% endif %}
+      {% if report.is_closed %} · נסגר ב-{{ report.closed_at|dt }} על ידי {{ report.closed_by }}{% endif %}
+    </p>
+  </div>
+  <a class="link-btn" href="{{ url_for('reports.index') }}">חזרה לרשימה</a>
+</div>
+
+<section class="card status-card">
+  <div class="progress big" title="{{ report.handled_count }} מתוך {{ report.total_count }}">
+    <div class="progress-bar" style="width: {{ report.progress_pct }}%"></div>
+  </div>
+  <p class="progress-summary">
+    נותרו <strong>{{ report.open_count }}</strong> הערות פתוחות
+    מתוך {{ report.total_count }} שנרשמו
+    ({{ report.done_notes|length }} בוצעו{% if report.cancelled_notes %}, {{ report.cancelled_notes|length }} בוטלו{% endif %}).
+  </p>
+
+  <div class="actions">
+    <a class="link-btn" href="{{ url_for('reports.export_open_notes', report_id=report.id) }}">ייצוא הערות פתוחות</a>
+    {% if report.is_closed %}
+    <form method="post" action="{{ url_for('reports.reopen_report', report_id=report.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="secondary">החזר לטיפול</button>
+    </form>
+    {% else %}
+    <form method="post" action="{{ url_for('reports.close_report', report_id=report.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" {% if not report.can_close %}disabled title="יש עדיין הערות פתוחות"{% endif %}>סגור את הדוח</button>
+    </form>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card">
+  <h2>הערות פתוחות ({{ report.open_count }})</h2>
+  {% if report.open_notes %}
+  <ul class="notes">
+    {% for note in report.sorted_open_notes() %}
+    <li class="note sev-{{ note.severity }}">
+      <div class="note-main">
+        <div class="note-text">{{ note.text }}</div>
+        <div class="note-meta">
+          <span class="chip">{{ note.category }}</span>
+          <span class="chip sev">{{ SEVERITY_LABELS.get(note.severity, note.severity) }}</span>
+          {% if note.amount is not none %}<span class="chip amount">{{ note.amount|ils }}</span>{% endif %}
+          {% if note.assignee %}<span class="chip">אחראי: {{ note.assignee }}</span>{% endif %}
+          {% if note.source %}<span class="chip src">מקור: {{ note.source }}</span>{% endif %}
+          <span class="muted-inline">נרשמה {{ note.created_at|dt }}{% if note.created_by %} · {{ note.created_by }}{% endif %}</span>
+        </div>
+      </div>
+      <div class="note-actions">
+        <form method="post" action="{{ url_for('reports.note_action', report_id=report.id, note_id=note.id, action='done') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="text" name="comment" placeholder="מה בוצע? (לא חובה)">
+          <button type="submit">בוצע</button>
+        </form>
+        <form method="post" action="{{ url_for('reports.note_action', report_id=report.id, note_id=note.id, action='cancel') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="secondary" title="ההערה אינה רלוונטית">בטל</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="alert success">אין הערות פתוחות — הדוח מוכן לסגירה.</div>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>הוספת הערה</h2>
+  <form method="post" action="{{ url_for('reports.add_note', report_id=report.id) }}" class="row-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="grow">תוכן ההערה<input type="text" name="text" required placeholder="יתרת לקוחות אינה מותאמת"></label>
+    <label>סיווג
+      <select name="category">
+        {% for c in CATEGORIES %}<option value="{{ c }}" {% if c == 'כללי' %}selected{% endif %}>{{ c }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>חשיבות
+      <select name="severity">
+        <option value="normal">רגיל</option>
+        <option value="critical">קריטי</option>
+        <option value="info">לבירור</option>
+      </select>
+    </label>
+    <label>סכום<input type="text" name="amount" placeholder="12,500"></label>
+    <label>אחראי<input type="text" name="assignee"></label>
+    <button type="submit">הוסף</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>הדבקת הערות סקירה</h2>
+  <p class="subtitle">הדביקו את ההערות כמו שנרשמו, שורה להערה. תבליטים ומספור מוסרים אוטומטית;
+    <code>[מאזן]</code> או <code>מע&quot;מ:</code> בתחילת שורה נקלטים כסיווג, <code>!</code> מסמן קריטי, וסכום עם ₪ נקלט כסכום.</p>
+  <form method="post" action="{{ url_for('reports.import_notes', report_id=report.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <textarea name="raw_text" rows="7" required placeholder="- [מאזן] יתרת לקוחות לא מותאמת, הפרש 12,500 ₪&#10;! להשלים אישור יתרות מהבנק&#10;מע&quot;מ: חסר דיווח על חשבונית 1099"></textarea>
+    <div class="row-form">
+      <label class="grow">מקור ההערות<input type="text" name="source" placeholder="סקירת דוחות 29/08"></label>
+      <button type="submit">קלוט הערות</button>
+    </div>
+  </form>
+</section>
+
+{% if guidelines %}
+<section class="card">
+  <h2>הנחיות הסקירה הקבועות</h2>
+  <ol class="guidelines-list">
+    {% for line in guidelines %}<li>{{ line }}</li>{% endfor %}
+  </ol>
+  <p class="subtitle"><a href="{{ url_for('reports.guidelines') }}">עריכת ההנחיות</a></p>
+</section>
+{% endif %}
+
+{% if report.done_notes or report.cancelled_notes %}
+<section class="card">
+  <h2>ירדו מהרשימה ({{ report.done_notes|length + report.cancelled_notes|length }})</h2>
+  <table class="submissions">
+    <thead>
+      <tr><th>הערה</th><th>סיווג</th><th>סטטוס</th><th>מה בוצע</th><th>מי ומתי</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for note in report.done_notes + report.cancelled_notes %}
+      <tr class="handled">
+        <td class="struck">{{ note.text }}</td>
+        <td>{{ note.category }}</td>
+        <td><span class="badge {{ 'done' if note.status == 'done' else 'cancelled' }}">{{ NOTE_STATUS_LABELS.get(note.status, note.status) }}</span></td>
+        <td>{{ note.done_comment }}</td>
+        <td class="muted-inline">{{ note.done_by }} · {{ note.done_at|dt }}</td>
+        <td>
+          <form method="post" action="{{ url_for('reports.note_action', report_id=report.id, note_id=note.id, action='reopen') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="secondary small">החזר לפתוחות</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}
