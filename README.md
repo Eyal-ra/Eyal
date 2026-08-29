@@ -126,6 +126,31 @@ python -m src.dashboard        # הדשבורד עולה על http://localhost:9
 
 שנה (`2025`) או מספר חשבונית לא ייקלטו כסכום - סכום מזוהה רק כשצמוד לו ₪ או ש"ח.
 
+### הזנת הערות משורת פקודה
+
+לא חייבים לעבור דרך הדשבורד. אפשר להזרים הערות ישירות למערכת - שימושי כשההערות
+נרשמות בסשן סקירה או בקובץ:
+
+```bash
+# קליטת הערות מקובץ, ופתיחת הדוח אם אינו קיים
+python -m src.reports_closure.cli --by "אייל" import --client "אהבה" --period 2025 \
+    --create --file notes.txt --source "סקירת דוחות 29/08"
+
+# או ישירות מהצינור
+cat notes.txt | python -m src.reports_closure.cli import --client "אהבה" --create -
+
+python -m src.reports_closure.cli notes  --client "אהבה"                    # מה פתוח
+python -m src.reports_closure.cli done   --client "אהבה" --note 3 --comment "הותאם"
+python -m src.reports_closure.cli close  --client "אהבה"
+python -m src.reports_closure.cli list --all                                 # כל הדוחות
+python -m src.reports_closure.cli guidelines --file guidelines.txt           # עדכון הנחיות
+```
+
+`--note` מקבל את **המספר הסידורי כפי שמוצג ב-`notes`** (המספור מתעדכן אחרי כל
+סימון, ולכן הפקודה מדפיסה את הרשימה המעודכנת), או את מזהה ההערה המלא שיציב תמיד.
+דוח מזוהה לפי `--client` (התאמה חלקית); אם השם מתאים ליותר מדוח אחד הפקודה נעצרת
+ומציגה את המועמדים במקום לנחש - אפשר לצמצם עם `--period` או `--id`.
+
 ### הנחיות סקירה קבועות
 
 עמוד **הנחיות סקירה** שומר את ההנחיות הקבועות בקובץ הנתונים ולא בסשן, כך שהן
@@ -145,6 +170,7 @@ src/reports_closure/
   models.py   - דוח, הערה, סטטוסים, פרסור סכומים בפורמט ישראלי
   parser.py   - המרת הערות סקירה מטקסט חופשי לרשימה מובנית
   store.py    - שמירה וטעינה אטומית, כללי הסגירה, היסטוריית שינויים
+  cli.py      - שורת פקודה: קליטת הערות, סימון בוצע, סגירה
 src/dashboard/reports_views.py        - המסלולים בדשבורד
 src/dashboard/templates/reports/      - המסכים
 ```
