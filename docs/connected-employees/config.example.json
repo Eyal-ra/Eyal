@@ -1,0 +1,21 @@
+{
+  "_comment": "Copy to C:\\OfficeSecrets\\timewatch.json - NEVER into Dropbox or git",
+  "company": "COMPANY_NUMBER",
+  "adminUser": "ADMIN_EMPLOYEE_NUMBER",
+  "password": "ADMIN_PASSWORD",
+  "baseUrl": "https://checkin.timewatch.co.il",
+  "cacheSeconds": 60,
+  "requestTimeoutMs": 15000,
+  "employees": [
+    { "id": "1", "name": "אייל" },
+    { "id": "2", "name": "ניתאי" },
+    { "id": "3", "name": "ויולטה" },
+    { "id": "4", "name": "מאיה" },
+    { "id": "5", "name": "עמרי" },
+    { "id": "6", "name": "לינוי" },
+    { "id": "7", "name": "ברינה" },
+    { "id": "8", "name": "שלו" },
+    { "id": "9", "name": "מירי" },
+    { "id": "10", "name": "חני" }
+  ]
+}
