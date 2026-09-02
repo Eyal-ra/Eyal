@@ -1,43 +1,62 @@
-const { extractDayTimes, minutesSince } = require('./timewatch-client.js');
+const { extractDayPunches, minutesSince } = require('./timewatch-client.js');
+
 let pass = 0, fail = 0;
 function eq(name, got, want) {
   const g = JSON.stringify(got), w = JSON.stringify(want);
   if (g === w) { pass++; console.log('  ok  ', name); }
   else { fail++; console.log('  FAIL', name, '\n     got ', g, '\n     want', w); }
 }
-const d = new Date(2026, 8, 2); // 2/9/2026
+const pick = (r) => ({ connected: r.connected, since: r.since, pairs: r.pairs, found: r.found });
 
-// Realistic month page: date | entry | exit | total, today still open.
-const month = `<table>
-<tr class="tr"><td>01/09/2026</td><td>08:31</td><td>17:02</td><td>8:31</td></tr>
-<tr class="tr"><td>02/09/2026</td><td>09:04</td><td>&nbsp;</td><td>3:30</td></tr>
-<tr class="tr"><td>03/09/2026</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+// Replica of a.timewatch.co.il/update.php rows:
+// date | type | dayname | standard | e1 | x1 | e2 | x2 | e3 | x3 | absence | notes | total
+const page = `<table>
+<tr><td>ג 01-09-2026</td><td>שלישי</td><td>8 שעות ו36 דקות</td><td>9:06</td>
+    <td><img src="mobile.png">10:41</td><td><img src="person.png">19:00</td>
+    <td></td><td></td><td></td><td></td><td></td><td></td><td>8:19</td></tr>
+<tr><td>ד 02-09-2026</td><td>רביעי</td><td>8 שעות ו36 דקות</td><td>9:06</td>
+    <td><img src="mobile.png">08:13</td><td><img src="mobile.png">17:03</td>
+    <td></td><td></td><td></td><td></td><td></td><td></td><td>8:50</td></tr>
+<tr><td>ה 03-09-2026</td><td>חמישי</td><td>7 ו36 דקות</td><td>8:06</td>
+    <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>חסרה כניסה/יציאה</td><td></td></tr>
 </table>`;
 
-eq('open day: total cell is NOT an exit', extractDayTimes(month, d), {entry:'09:04', exit:null, found:true});
-eq('closed day', extractDayTimes(month, new Date(2026,8,1)), {entry:'08:31', exit:'17:02', found:true});
-eq('empty day', extractDayTimes(month, new Date(2026,8,3)), {entry:null, exit:null, found:true});
-eq('day not in page', extractDayTimes(month, new Date(2026,8,25)), {entry:null, exit:null, found:false});
+eq('closed day', pick(extractDayPunches(page, new Date(2026, 8, 1))),
+  { connected: false, since: null, pairs: [{ entry: '10:41', exit: '19:00' }], found: true });
+eq('standard and total hours are not punches', pick(extractDayPunches(page, new Date(2026, 8, 2))),
+  { connected: false, since: null, pairs: [{ entry: '08:13', exit: '17:03' }], found: true });
+eq('day with no punches', pick(extractDayPunches(page, new Date(2026, 8, 3))),
+  { connected: false, since: null, pairs: [], found: true });
+eq('day absent from page', pick(extractDayPunches(page, new Date(2026, 8, 20))),
+  { connected: false, since: null, pairs: [], found: false });
 
-// Early starter whose accrued total exceeds the entry clock time.
-const early = `<table>
-<tr class="tr"><td>01/09/2026</td><td>06:00</td><td>15:00</td><td>9:00</td></tr>
-<tr class="tr"><td>02/09/2026</td><td>06:00</td><td>&nbsp;</td><td>7:15</td></tr>
-</table>`;
-eq('early starter, total > entry', extractDayTimes(early, d), {entry:'06:00', exit:null, found:true});
+// Stepped out and came back - a single-pair reader calls this "left for the day".
+const back = `<table><tr><td>ד 02-09-2026</td><td>רביעי</td><td>8 שעות</td><td>9:06</td>
+ <td>08:13</td><td>12:30</td><td>13:15</td><td></td><td></td><td></td><td></td><td></td><td>4:17</td></tr></table>`;
+eq('back from a break, still in', pick(extractDayPunches(back, new Date(2026, 8, 2))),
+  { connected: true, since: '13:15', pairs: [{ entry: '08:13', exit: '12:30' }, { entry: '13:15', exit: null }], found: true });
 
-// Layout with a leading employee-name column.
-const shifted = `<table>
-<tr class="tr"><td>ויולטה</td><td>01/09/2026</td><td>08:00</td><td>16:00</td><td>8:00</td></tr>
-<tr class="tr"><td>ויולטה</td><td>02/09/2026</td><td>08:12</td><td>&nbsp;</td><td>2:00</td></tr>
-</table>`;
-eq('shifted columns self-calibrate', extractDayTimes(shifted, d), {entry:'08:12', exit:null, found:true});
+const out = `<table><tr><td>ד 02-09-2026</td><td>רביעי</td><td>8 שעות</td><td>9:06</td>
+ <td>08:13</td><td>12:30</td><td></td><td></td><td></td><td></td><td></td><td></td><td>4:17</td></tr></table>`;
+eq('out on a break right now', pick(extractDayPunches(out, new Date(2026, 8, 2))),
+  { connected: false, since: null, pairs: [{ entry: '08:13', exit: '12:30' }], found: true });
 
-// No closed day anywhere -> fall back to order of appearance.
-eq('uncalibratable falls back', extractDayTimes('<tr class="tr"><td>02/09/2026</td><td>07:15</td><td>&nbsp;</td></tr>', d), {entry:'07:15', exit:null, found:true});
-eq('single-digit date format', extractDayTimes('<tr class="tr"><td>2.9.2026</td><td>07:15</td></tr>', d), {entry:'07:15', exit:null, found:true});
-eq('config override wins', extractDayTimes('<tr><td>02/09/2026</td><td>9:00</td><td>08:00</td><td>17:30</td></tr>', d, [2,3]), {entry:'08:00', exit:'17:30', found:true});
-eq('minutesSince 09:04 -> 12:34', minutesSince('09:04', new Date(2026,8,2,12,34)), 210);
+const three = `<table><tr><td>ד 02-09-2026</td><td>ד</td><td>8</td><td>9:06</td>
+ <td>07:00</td><td>09:00</td><td>10:00</td><td>12:00</td><td>13:00</td><td></td><td></td><td></td><td>4:00</td></tr></table>`;
+eq('three pairs, open on the third', pick(extractDayPunches(three, new Date(2026, 8, 2))),
+  { connected: true, since: '13:00', pairs: [{ entry: '07:00', exit: '09:00' }, { entry: '10:00', exit: '12:00' }, { entry: '13:00', exit: null }], found: true });
+
+const morning = `<table><tr><td>ד 02-09-2026</td><td>ד</td><td>8</td><td>9:06</td>
+ <td>09:04</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>3:30</td></tr></table>`;
+eq('in this morning, total already accruing', pick(extractDayPunches(morning, new Date(2026, 8, 2))),
+  { connected: true, since: '09:04', pairs: [{ entry: '09:04', exit: null }], found: true });
+
+const named = `<table><tr><td>ברינה</td><td>ד 02-09-2026</td><td>ד</td><td>8</td><td>9:06</td>
+ <td>09:04</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>3:30</td></tr></table>`;
+eq('extra leading column does not shift the mapping', pick(extractDayPunches(named, new Date(2026, 8, 2))),
+  { connected: true, since: '09:04', pairs: [{ entry: '09:04', exit: null }], found: true });
+
+eq('minutesSince 09:04 -> 12:34', minutesSince('09:04', new Date(2026, 8, 2, 12, 34)), 210);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

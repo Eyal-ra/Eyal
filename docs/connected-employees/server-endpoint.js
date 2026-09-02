@@ -1,45 +1,84 @@
 'use strict';
 /**
- * Dashboard route: GET /api/connected-employees
+ * Dashboard routes:
+ *   GET /api/connected-employees  - who is clocked in right now
+ *   GET /api/presence-log         - today's arrivals and departures
  *
- * Mount on the existing dashboard server (EYAL only - see COMPUTERNAME guard
- * in the start*.bat files). Credentials never leave the server: the browser
- * receives names and times only.
+ * Mount on the existing dashboard server (EYAL only - see the COMPUTERNAME
+ * guard in the start*.bat files). Credentials never leave the server: the
+ * browser receives names and times only.
  *
- * Usage in the dashboard server:
  *   const { registerConnectedEmployees } = require('./connected-employees/server-endpoint');
- *   registerConnectedEmployees(app);
+ *   registerConnectedEmployees(app, {
+ *     watchNames: ['ברינה'],
+ *     notify: (event) => { ... your alert here, see README ... },
+ *   });
+ *
+ * These routes expose where staff are, so mount them behind whatever already
+ * gates the dashboard's private section - do not serve them to everyone.
  */
 
 const { getConnectedEmployees, loadConfig } = require('./timewatch-client');
-
-let cache = { at: 0, payload: null };
-let inFlight = null;
+const { createWatcher } = require('./presence-watcher');
 
 function registerConnectedEmployees(app, options = {}) {
-  const path = options.path || '/api/connected-employees';
+  const cfg = options.config || loadConfig();
   const cacheMs = (options.cacheSeconds ?? 60) * 1000;
+  const watcher = createWatcher({
+    logDir: options.logDir || 'presence-log',
+    watchNames: options.watchNames || cfg.watchNames,
+    notify: options.notify,
+  });
 
-  app.get(path, async (req, res) => {
-    const now = Date.now();
-    if (cache.payload && now - cache.at < cacheMs) {
-      res.set('cache-control', 'no-store');
+  let cache = { at: 0, payload: null };
+  let inFlight = null;
+
+  async function refresh() {
+    // Collapse concurrent dashboard refreshes into a single TimeWatch login.
+    inFlight = inFlight || getConnectedEmployees({ config: cfg })
+      .finally(() => { inFlight = null; });
+    const payload = await inFlight;
+    // Only a successful read may move the watcher's state: treating a failed
+    // fetch as "nobody is in" would fire a departure alert for everyone.
+    watcher.update(payload.connected);
+    cache = { at: Date.now(), payload };
+    return payload;
+  }
+
+  app.get(options.path || '/api/connected-employees', async (req, res) => {
+    res.set('cache-control', 'no-store');
+    if (cache.payload && Date.now() - cache.at < cacheMs) {
       return res.json({ ...cache.payload, cached: true });
     }
     try {
-      // Collapse concurrent dashboard refreshes into a single TimeWatch login.
-      inFlight = inFlight || getConnectedEmployees({ config: options.config || loadConfig() })
-        .finally(() => { inFlight = null; });
-      const payload = await inFlight;
-      cache = { at: Date.now(), payload };
-      res.set('cache-control', 'no-store');
-      res.json({ ...payload, cached: false });
+      res.json({ ...(await refresh()), cached: false });
     } catch (err) {
       // Never leak credentials or upstream HTML into the dashboard.
       console.error('[connected-employees]', err);
       res.status(502).json({ error: 'timewatch_unavailable', connected: [], away: [], errors: [] });
     }
   });
+
+  app.get(options.logPath || '/api/presence-log', (req, res) => {
+    res.set('cache-control', 'no-store');
+    try {
+      res.json({ events: watcher.today() });
+    } catch (err) {
+      console.error('[presence-log]', err);
+      res.status(500).json({ error: 'log_unavailable', events: [] });
+    }
+  });
+
+  // Poll independently of anyone having the dashboard open, so an alert
+  // arrives even when no browser is looking.
+  if (options.pollSeconds) {
+    const timer = setInterval(() => {
+      refresh().catch((err) => console.error('[connected-employees] poll', err));
+    }, options.pollSeconds * 1000);
+    if (timer.unref) timer.unref();
+  }
+
+  return watcher;
 }
 
 module.exports = { registerConnectedEmployees };
