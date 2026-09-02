@@ -16,8 +16,9 @@
 | `timewatch-client.js` | לוגין + קריאת נוכחות היום מטיים ווטץ׳ |
 | `presence-watcher.js` | הופך צילומי מצב לאירועי כניסה/יציאה + לוג יומי |
 | `server-endpoint.js` | `/api/connected-employees` + `/api/presence-log` |
+| `notify-presence.js` | התראה לנוטיפייר, בצבע ייעודי |
 | `panel.html` | כרטיס הדשבורד (RTL, עצמאי) |
-| `*.test.js` | 24 בדיקות — `node timewatch-client.test.js` ו‑`node presence-watcher.test.js` |
+| `*.test.js` | 37 בדיקות — הרץ כל `*.test.js` |
 | `config.example.json` | תבנית לקובץ הסודות |
 
 ## המערכת שלך
@@ -72,34 +73,54 @@ node -e "require('./timewatch-client').getConnectedEmployees().then(r=>console.l
 
 1. `copy config.example.json C:\OfficeSecrets\timewatch.json` ומלא פרטים.
 2. העתק את קבצי ה‑js לתיקיית הדשבורד.
-3. בשרת הדשבורד:
-   ```js
-   const { registerConnectedEmployees } = require('./connected-employees/server-endpoint');
-   registerConnectedEmployees(app, {
-     watchNames: ['ברינה'],
-     pollSeconds: 120,          // התראה גם כשהדשבורד סגור
-     notify: (event) => { /* ראה למטה */ },
-   });
-   ```
+3. חבר את הראוטים בשרת הדשבורד — ראה "ההתראה" למטה לקוד המלא.
 4. הדבק את `panel.html` בתוך הקטע **"בקרת שרת (פרטי)" 🔒** של `dashboard.html`
    — שם כבר יש הפרדה לתכנים שלך בלבד, כמו שביקשת.
 5. פתח את הדשבורד דרך ה‑URL (לא `file://`).
 
 ## ההתראה
 
-`notify` מקבל `{type:'in'|'out', name, since, at}` ונקרא רק על שינוי, ורק
-עבור מי שב‑`watchNames`. חיבור למערכת ההתראות הקיימת, למשל דרך תור קבצים:
+`notify-presence.js` מפיל בקשת התראה לתור הקבצים של הנוטיפייר. בשרת הדשבורד:
 
 ```js
-notify: (e) => {
-  const text = e.type === 'in'
-    ? `${e.name} נכנסה — מ־${e.since}`
-    : `${e.name} יצאה`;
-  fs.writeFileSync(
-    path.join('C:\\notif-requests', `presence-${Date.now()}.json`),
-    JSON.stringify({ title: 'נוכחות', text }), 'utf8');
-}
+const { registerConnectedEmployees } = require('./connected-employees/server-endpoint');
+const { createNotifier } = require('./connected-employees/notify-presence');
+
+registerConnectedEmployees(app, {
+  watchNames: ['ברינה'],
+  pollSeconds: 120,                                   // התראה גם כשהדשבורד סגור
+  notify: createNotifier({ queueDir: 'C:\\notif-requests' }),
+});
 ```
+
+### הצבע
+
+התראות נוכחות מקבלות **סגול** — משפחת צבע שלא בשימוש אצלך, כדי שתזהה מיד
+במה מדובר לפני שקראת מילה:
+
+| מצב | צבע | סימן |
+|-----|------|------|
+| נכנס/ה | `#7c3aed` סגול | 🟣 |
+| יצא/ה | `#a78bfa` סגול בהיר | ⚪ |
+
+אדום (תקלה), ירוק (תקין) וכחול (מידע) נשארים למה שהם היום. גם הסימן סגול ולא
+ירוק — נקודה ירוקה בתוך התראת נוכחות נקראת כ"הכל תקין", וזו הודעה אחרת.
+
+לשינוי: `createNotifier({ queueDir, colors: { in: '#...', out: '#...' } })`.
+
+### מבנה הבקשה
+
+```json
+{ "kind": "presence", "type": "in", "name": "ברינה",
+  "title": "נוכחות", "text": "ברינה נכנס/ה — מ־09:04",
+  "color": "#7c3aed", "icon": "🟣", "at": "2026-09-02T09:05:00.000Z" }
+```
+
+הקובץ נכתב בשם זמני ואז `rename` — פעולה אטומית, כך שהנוטיפייר לא יכול לקרוא
+קובץ חצי‑כתוב. UTF-8 מפורש, כדי שהעברית תשרוד.
+
+**אם הנוטיפייר מצפה לשמות שדות אחרים** — `buildNotification` ב‑`notify-presence.js`
+הוא המקום היחיד שמכיר את הסכמה שלו. שנה שם ותו לא.
 
 ## אחרי ההטמעה — לפי כללי המשרד
 
