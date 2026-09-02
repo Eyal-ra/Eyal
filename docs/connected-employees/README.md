@@ -15,7 +15,7 @@
 | `timewatch-client.js` | לוגין ל‑TimeWatch + זיהוי מי נכנס ולא יצא היום |
 | `timewatch-client.test.js` | 10 בדיקות לפרסר — `node timewatch-client.test.js` |
 | `server-endpoint.js` | ראוט `GET /api/connected-employees` עם cache |
-| `panel.html` | הפאנל עצמו (HTML+CSS+JS, RTL, עצמאי) |
+| `panel.html` | כרטיס הדשבורד עצמו (HTML+CSS+JS, RTL, עצמאי) |
 | `config.example.json` | תבנית לקובץ הסודות |
 
 ## איך זה עובד
@@ -26,6 +26,9 @@
 - `GET /punch/editwh.php?ee=<עובד>&e=<חברה>&y=<שנה>&m=<חודש>` — טבלת החודש
 
 לכל עובד נמשכת שורת היום. **כניסה בלי יציאה = עדיין מחובר.**
+
+> לא לבלבל עם הכרטיס הקיים **"מי מחובר להתראות"** — הוא heartbeat של מערכת
+> ההתראות (חי/נפל), לא נוכחות. הכרטיס הזה הוא כרטיס נוסף לידו.
 
 הכל HTTP טהור — **בלי puppeteer ובלי חלון דפדפן**, כך שאין חלונות להשאיר פתוחים.
 אפס תלויות npm, Node 24 בלבד.
@@ -51,7 +54,9 @@
    const { registerConnectedEmployees } = require('./connected-employees/server-endpoint');
    registerConnectedEmployees(app);
    ```
-4. הדבק את תוכן `panel.html` **בתחתית** ה‑HTML של הדשבורד הראשי.
+4. הדבק את תוכן `panel.html` בשורת הכרטיסים התחתונה של
+   `Y:\Dropbox\מערכות\2026\שותפות א.א.ר\dashboard.html`, ליד הכרטיס
+   "מי מחובר להתראות".
 5. פתח את הדשבורד דרך ה‑URL (לא `file://` — שובר קישורים).
 
 ## מה חייב אימות מקומי (הדבר היחיד שלא ניתן לבדוק מרחוק)
