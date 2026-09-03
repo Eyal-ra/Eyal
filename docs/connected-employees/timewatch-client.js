@@ -8,14 +8,15 @@
  * Pure HTTP (no puppeteer / no browser window), so nothing has to be closed
  * afterwards. Global fetch only, zero npm dependencies.
  *
- * TimeWatch publishes no API. The login form's field names are read off the
- * page at run time (see login-form.js); the attendance path and its query
- * parameters are the remaining guess, overridable from the .env.
+ * TimeWatch publishes no API, so both forms it needs - the login and the
+ * attendance filter - are read off the page at run time rather than guessed.
+ * See login-form.js and attendance-form.js.
  */
 
 const fs = require('fs');
 const path = require('path');
 const { discoverLoginForm, buildLoginBody } = require('./login-form');
+const { discoverAttendanceForm, buildAttendanceQuery } = require('./attendance-form');
 
 // Secrets live in a .env under C:\OfficeSecrets; everything else (employee
 // numbers, who to alert on) is not secret and sits next to the code.
@@ -219,20 +220,51 @@ function extractDayPunches(html, date, offsets) {
  * Fetching
  * ------------------------------------------------------------------ */
 
-async function fetchEmployeeMonth(cfg, jar, employeeId, date) {
-  const params = new URLSearchParams({
-    ee: String(employeeId),
-    e: String(cfg.company),
-    y: String(date.getFullYear()),
-    m: String(date.getMonth() + 1),
-    ...(cfg.extraParams || {}),
-  });
-  const res = await fetch(`${cfg.baseUrl}${cfg.attendancePath}?${params}`, {
+async function getPage(cfg, jar, url) {
+  const res = await fetch(url, {
     headers: { cookie: cookieHeader(jar) },
     signal: AbortSignal.timeout(cfg.requestTimeoutMs),
   });
-  if (!res.ok) throw new Error(`${cfg.attendancePath} ${res.status} for employee ${employeeId}`);
+  if (!res.ok) throw new Error(`${url} returned ${res.status}`);
   return readBody(res);
+}
+
+/**
+ * Read the attendance page once and learn how to ask it for a given
+ * employee and month.
+ *
+ * The alternative is hard-coding query parameters, and the ones inherited
+ * from the employee portal are probably wrong here. Discovery also keeps
+ * whatever the page's other filters (branch, department, role, view) are
+ * already set to, instead of silently dropping them.
+ */
+async function discoverAttendance(cfg, jar) {
+  const url = cfg.baseUrl + cfg.attendancePath;
+  const form = discoverAttendanceForm(await getPage(cfg, jar, url), {
+    knownEmployeeId: cfg.employees.find((e) => String(e.id).trim())?.id,
+  });
+  if (!form || !form.year || !form.month) return null;
+  return { form, url: form.action ? new URL(form.action, url).toString() : url };
+}
+
+async function fetchEmployeeMonth(cfg, jar, employeeId, date, attendance) {
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+
+  let url;
+  if (attendance) {
+    const params = buildAttendanceQuery(attendance.form, { employeeId, year, month });
+    url = `${attendance.url}?${params}`;
+  } else {
+    // Nothing to learn from - fall back to the parameters the employee
+    // portal uses, which is all there was before discovery.
+    const params = new URLSearchParams({
+      ee: String(employeeId), e: String(cfg.company),
+      y: String(year), m: String(month), ...(cfg.extraParams || {}),
+    });
+    url = `${cfg.baseUrl}${cfg.attendancePath}?${params}`;
+  }
+  return getPage(cfg, jar, url);
 }
 
 function minutesSince(hhmm, now) {
@@ -249,6 +281,8 @@ async function getConnectedEmployees(options = {}) {
   const cfg = options.config || loadConfig();
   const now = options.now || new Date();
   const jar = await login(cfg);
+  // One extra request, shared by every employee below.
+  const attendance = await discoverAttendance(cfg, jar).catch(() => null);
 
   const connected = [];
   const away = [];
@@ -256,7 +290,7 @@ async function getConnectedEmployees(options = {}) {
 
   const results = await Promise.allSettled(
     cfg.employees.map(async (emp) => {
-      const html = await fetchEmployeeMonth(cfg, jar, emp.id, now);
+      const html = await fetchEmployeeMonth(cfg, jar, emp.id, now, attendance);
       return extractDayPunches(html, now, cfg.punchOffsets);
     })
   );
@@ -280,5 +314,6 @@ async function getConnectedEmployees(options = {}) {
 }
 
 module.exports = {
-  getConnectedEmployees, loadConfig, extractDayPunches, minutesSince, parseEnv, PUNCH_OFFSETS,
+  getConnectedEmployees, loadConfig, extractDayPunches, minutesSince, parseEnv,
+  discoverAttendance, PUNCH_OFFSETS,
 };
