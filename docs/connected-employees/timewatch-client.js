@@ -8,25 +8,66 @@
  * Pure HTTP (no puppeteer / no browser window), so nothing has to be closed
  * afterwards. Global fetch only, zero npm dependencies.
  *
- * TimeWatch publishes no API, so the request shape lives in the config and
- * is captured once from the browser - see README, "לכידת הבקשה". The table
- * parsing below is the part that is pinned down and covered by tests.
+ * TimeWatch publishes no API. The login form's field names are read off the
+ * page at run time (see login-form.js); the attendance path and its query
+ * parameters are the remaining guess, overridable from the .env.
  */
 
 const fs = require('fs');
+const path = require('path');
+const { discoverLoginForm, buildLoginBody } = require('./login-form');
 
-const SECRETS_PATH = process.env.TIMEWATCH_CONFIG || 'C:\\OfficeSecrets\\timewatch.json';
+// Secrets live in a .env under C:\OfficeSecrets; everything else (employee
+// numbers, who to alert on) is not secret and sits next to the code.
+const ENV_PATH = process.env.TIMEWATCH_ENV || 'C:\\OfficeSecrets\\timewatch.env';
+const SETTINGS_PATH = process.env.TIMEWATCH_SETTINGS || path.join(__dirname, 'employees.json');
 
-function loadConfig(path) {
-  const cfg = JSON.parse(fs.readFileSync(path || SECRETS_PATH, 'utf8'));
-  for (const key of ['company', 'adminUser', 'password']) {
-    if (!cfg[key]) throw new Error(`timewatch config: missing "${key}"`);
+/** Minimal .env reader - no dependency, and it must not choke on a password. */
+function parseEnv(text) {
+  const out = {};
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq < 1) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    // Quotes are stripped, so a password with a # or spaces survives intact.
+    if (/^".*"$/.test(value) || /^'.*'$/.test(value)) value = value.slice(1, -1);
+    out[key] = value;
   }
-  cfg.baseUrl = (cfg.baseUrl || 'https://a.timewatch.co.il').replace(/\/+$/, '');
-  cfg.loginPath = cfg.loginPath || '/punch/punch2.php';
-  cfg.attendancePath = cfg.attendancePath || '/update.php';
-  cfg.requestTimeoutMs = cfg.requestTimeoutMs ?? 15000;
-  cfg.employees = cfg.employees || [];
+  return out;
+}
+
+function loadConfig(options = {}) {
+  const envPath = options.envPath || ENV_PATH;
+  const env = parseEnv(fs.readFileSync(envPath, 'utf8'));
+
+  const cfg = {
+    company: env.TIMEWATCH_COMPANY,
+    username: env.TIMEWATCH_USER,
+    password: env.TIMEWATCH_PASSWORD,
+    baseUrl: (env.TIMEWATCH_BASE_URL || 'https://a.timewatch.co.il').replace(/\/+$/, ''),
+    loginPath: env.TIMEWATCH_LOGIN_PATH || '/user/login.php',
+    attendancePath: env.TIMEWATCH_ATTENDANCE_PATH || '/update.php',
+    requestTimeoutMs: Number(env.TIMEWATCH_TIMEOUT_MS || 15000),
+    employees: [],
+    watchNames: [],
+  };
+
+  for (const key of ['company', 'username', 'password']) {
+    if (!cfg[key]) throw new Error(`timewatch env: missing TIMEWATCH_${key.toUpperCase()} in ${envPath}`);
+  }
+
+  const settingsPath = options.settingsPath || SETTINGS_PATH;
+  try {
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    cfg.employees = settings.employees || [];
+    cfg.watchNames = settings.watchNames || [];
+    if (settings.punchOffsets) cfg.punchOffsets = settings.punchOffsets;
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
   return cfg;
 }
 
@@ -59,20 +100,40 @@ function collectCookies(res, jar) {
 
 async function login(cfg) {
   const jar = {};
-  const res = await fetch(cfg.baseUrl + cfg.loginPath, {
+  const loginUrl = cfg.baseUrl + cfg.loginPath;
+
+  // Read the form first: its field names are not documented, and a wrong
+  // guess is indistinguishable from a wrong password.
+  const pageRes = await fetch(loginUrl, { signal: AbortSignal.timeout(cfg.requestTimeoutMs) });
+  if (!pageRes.ok) throw new Error(`login page ${pageRes.status} at ${loginUrl}`);
+  collectCookies(pageRes, jar);
+  const form = discoverLoginForm(await readBody(pageRes));
+  if (!form) throw new Error(`no login form found at ${loginUrl} - check TIMEWATCH_LOGIN_PATH`);
+
+  const action = form.action
+    ? new URL(form.action, loginUrl).toString()
+    : loginUrl;
+
+  const res = await fetch(action, {
     method: 'POST',
-    body: new URLSearchParams({
-      comp: String(cfg.company),
-      name: String(cfg.adminUser),
-      pw: String(cfg.password),
-    }),
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: buildLoginBody(form, cfg),
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      cookie: cookieHeader(jar),
+      referer: loginUrl,
+    },
     redirect: 'manual',
     signal: AbortSignal.timeout(cfg.requestTimeoutMs),
   });
   collectCookies(res, jar);
+
+  // Being handed the login form again means the credentials bounced.
+  const body = await readBody(res);
+  if (discoverLoginForm(body) && res.status === 200) {
+    throw new Error('login rejected - check company number, username and password');
+  }
   if (Object.keys(jar).length === 0) {
-    throw new Error('timewatch login returned no session cookie - check credentials and loginPath');
+    throw new Error('login returned no session cookie');
   }
   return jar;
 }
@@ -129,7 +190,7 @@ function extractDayPunches(html, date, offsets) {
   const punchOffsets = offsets || PUNCH_OFFSETS;
   const day = date.getDate();
   const month = date.getMonth() + 1;
-  // The page writes dates as "ד 02-09-2026"; allow ./- and an optional zero.
+  // The page writes dates as "\u05d3 02-09-2026"; allow ./- and an optional zero.
   const dateRe = new RegExp(`(^|\\D)0?${day}[./-]0?${month}[./-]\\d{4}`);
 
   for (const cells of rowsWithCells(html)) {
@@ -219,5 +280,5 @@ async function getConnectedEmployees(options = {}) {
 }
 
 module.exports = {
-  getConnectedEmployees, loadConfig, extractDayPunches, minutesSince, PUNCH_OFFSETS,
+  getConnectedEmployees, loadConfig, extractDayPunches, minutesSince, parseEnv, PUNCH_OFFSETS,
 };
