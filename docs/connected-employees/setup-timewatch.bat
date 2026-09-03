@@ -28,13 +28,13 @@ if errorlevel 1 (
 
 echo.
 echo   === 1/3  Downloading the code ===
-powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; New-Item -ItemType Directory -Force -Path '%DIR%' | Out-Null; foreach($f in 'timewatch-client.js','login-form.js','employees.json','verify-setup.js'){ Invoke-WebRequest ('%BASE%/'+$f) -OutFile ('%DIR%\'+$f) -UseBasicParsing }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; New-Item -ItemType Directory -Force -Path '%DIR%' | Out-Null; foreach($f in 'timewatch-client.js','login-form.js','attendance-form.js','employees.json','verify-setup.js'){ Invoke-WebRequest ('%BASE%/'+$f) -OutFile ('%DIR%\'+$f) -UseBasicParsing }"
 if errorlevel 1 (
   echo   [X] Download failed. Check the internet connection.
   pause
   exit /b 1
 )
-echo   [v] 4 files downloaded
+echo   [v] 5 files downloaded
 
 echo.
 echo   === 2/3  Credentials ===
