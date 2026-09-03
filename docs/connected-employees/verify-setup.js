@@ -16,8 +16,14 @@ const { loadConfig, getConnectedEmployees } = require('./timewatch-client');
 
 const ENV_PATH = process.env.TIMEWATCH_ENV || 'C:\\OfficeSecrets\\timewatch.env';
 
-const ok = (m) => console.log(`  \x1b[32mOK\x1b[0m    ${m}`);
-const bad = (m, fix) => { console.log(`  \x1b[31mFAIL\x1b[0m  ${m}`); if (fix) console.log(`        \u2192 ${fix}`); };
+// Colour is dropped when output is redirected to a file, so a saved report
+// can be pasted somewhere without escape codes littering it.
+const COLOR = process.stdout.isTTY && !process.env.NO_COLOR;
+const green = (t) => (COLOR ? `\x1b[32m${t}\x1b[0m` : t);
+const red = (t) => (COLOR ? `\x1b[31m${t}\x1b[0m` : t);
+
+const ok = (m) => console.log(`  ${green('OK')}    ${m}`);
+const bad = (m, fix) => { console.log(`  ${red('FAIL')}  ${m}`); if (fix) console.log(`        -> ${fix}`); };
 const info = (m) => console.log(`        ${m}`);
 
 /** Never print a secret - only that it is there and roughly how big. */
