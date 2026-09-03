@@ -4,59 +4,58 @@
  *
  *   node verify-setup.js
  *
- * It walks the chain in order - config, login, fetch, parse - and stops at the
- * first broken link with a specific instruction, rather than a stack trace.
+ * It walks the chain in order - config, network, login, fetch, parse - and
+ * stops at the first broken link with the specific fix, rather than a stack
+ * trace that could mean any of them.
  *
- * Safe to paste the output anywhere: secrets are never printed, only whether
- * they are present and how long they are.
+ * Safe to paste anywhere: secrets are reported as present-or-missing and a
+ * length, never a value.
  */
 
 const { loadConfig, getConnectedEmployees } = require('./timewatch-client');
 
-const SECRETS_PATH = process.env.TIMEWATCH_CONFIG || 'C:\\OfficeSecrets\\timewatch.json';
+const ENV_PATH = process.env.TIMEWATCH_ENV || 'C:\\OfficeSecrets\\timewatch.env';
 
 const ok = (m) => console.log(`  \x1b[32mOK\x1b[0m    ${m}`);
 const bad = (m, fix) => { console.log(`  \x1b[31mFAIL\x1b[0m  ${m}`); if (fix) console.log(`        \u2192 ${fix}`); };
 const info = (m) => console.log(`        ${m}`);
 
 /** Never print a secret - only that it is there and roughly how big. */
-const shape = (v) => (v ? `set (${String(v).length} chars)` : 'MISSING');
+const shape = (v) => (v ? `\u05de\u05dc\u05d0 (${String(v).length} \u05ea\u05d5\u05d5\u05d9\u05dd)` : '\u05d7\u05e1\u05e8');
 
 async function main() {
-  console.log('\n=== 1. \u05e7\u05d5\u05d1\u05e5 \u05d4\u05e7\u05d5\u05e0\u05e4\u05d9\u05d2 ===');
+  console.log('\n=== 1. \u05d4\u05d2\u05d3\u05e8\u05d5\u05ea ===');
   let cfg;
   try {
     cfg = loadConfig();
-    ok(`\u05e0\u05e7\u05e8\u05d0 \u05de\u05be${SECRETS_PATH}`);
+    ok(`\u05e0\u05e7\u05e8\u05d0 \u05de\u05be${ENV_PATH}`);
   } catch (err) {
     if (err.code === 'ENOENT') {
-      bad(`\u05d4\u05e7\u05d5\u05d1\u05e5 \u05dc\u05d0 \u05e7\u05d9\u05d9\u05dd: ${SECRETS_PATH}`,
-        '\u05d4\u05e2\u05ea\u05e7 \u05d0\u05ea config.example.json \u05dc\u05e9\u05dd \u05d5\u05de\u05dc\u05d0 \u05d0\u05ea \u05d4\u05e4\u05e8\u05d8\u05d9\u05dd');
+      bad(`\u05d4\u05e7\u05d5\u05d1\u05e5 \u05dc\u05d0 \u05e7\u05d9\u05d9\u05dd: ${ENV_PATH}`, '\u05d4\u05e2\u05ea\u05e7 \u05dc\u05e9\u05dd \u05d0\u05ea timewatch.env.example \u05d5\u05de\u05dc\u05d0 \u05d0\u05ea \u05d4\u05e1\u05d9\u05e1\u05de\u05d4');
+    } else if (/missing TIMEWATCH_/.test(err.message)) {
+      const key = (/missing (TIMEWATCH_\w+)/.exec(err.message) || [])[1];
+      bad(`${key} \u05e8\u05d9\u05e7 \u05d0\u05d5 \u05d7\u05e1\u05e8`, `\u05de\u05dc\u05d0 \u05d0\u05ea ${key} \u05d1\u05be${ENV_PATH}`);
     } else {
-      bad(`\u05d4\u05e7\u05d5\u05d1\u05e5 \u05dc\u05d0 \u05e0\u05e7\u05e8\u05d0: ${err.message}`, '\u05d1\u05d3\u05d5\u05e7 \u05e9\u05d4\u05beJSON \u05ea\u05e7\u05d9\u05df');
+      bad(`\u05d4\u05e7\u05d5\u05d1\u05e5 \u05dc\u05d0 \u05e0\u05e7\u05e8\u05d0: ${err.message}`, '\u05d1\u05d3\u05d5\u05e7 \u05d0\u05ea \u05de\u05d1\u05e0\u05d4 \u05d4\u05e7\u05d5\u05d1\u05e5');
     }
     return 1;
   }
 
-  info(`company:   ${shape(cfg.company)}`);
-  info(`adminUser: ${shape(cfg.adminUser)}`);
-  info(`password:  ${shape(cfg.password)}`);
-  info(`baseUrl:   ${cfg.baseUrl}`);
-
-  const placeholders = ['COMPANY_NUMBER', 'ADMIN_EMPLOYEE_NUMBER', 'ADMIN_PASSWORD'];
-  const stillTemplate = [cfg.company, cfg.adminUser, cfg.password]
-    .filter((v) => placeholders.includes(String(v)));
-  if (stillTemplate.length) {
-    bad(`${stillTemplate.length} \u05e9\u05d3\u05d5\u05ea \u05e2\u05d3\u05d9\u05d9\u05df \u05de\u05db\u05d9\u05dc\u05d9\u05dd \u05d0\u05ea \u05e2\u05e8\u05db\u05d9 \u05d4\u05ea\u05d1\u05e0\u05d9\u05ea`,
-      '\u05de\u05dc\u05d0 \u05d0\u05ea \u05d4\u05e2\u05e8\u05db\u05d9\u05dd \u05d4\u05d0\u05de\u05d9\u05ea\u05d9\u05d9\u05dd \u05d1\u05de\u05e7\u05d5\u05dd COMPANY_NUMBER / ADMIN_EMPLOYEE_NUMBER / ADMIN_PASSWORD');
-    return 1;
-  }
+  info(`\u05de\u05e1\u05e4\u05e8 \u05d7\u05d1\u05e8\u05d4: ${shape(cfg.company)}`);
+  info(`\u05e9\u05dd \u05de\u05e9\u05ea\u05de\u05e9:  ${cfg.username}`);
+  info(`\u05e1\u05d9\u05e1\u05de\u05d4:     ${shape(cfg.password)}`);
+  info(`\u05db\u05ea\u05d5\u05d1\u05ea:     ${cfg.baseUrl}${cfg.loginPath}`);
   ok('\u05db\u05dc \u05e9\u05d3\u05d5\u05ea \u05d4\u05d7\u05d5\u05d1\u05d4 \u05de\u05dc\u05d0\u05d9\u05dd');
 
-  const unset = cfg.employees.filter((e) => String(e.id) === '0');
+  if (cfg.employees.length === 0) {
+    bad('\u05d0\u05d9\u05df \u05e2\u05d5\u05d1\u05d3\u05d9\u05dd \u05d1-employees.json', '\u05d4\u05d5\u05e1\u05e3 \u05e9\u05dd \u05d5\u05de\u05e1\u05e4\u05e8 \u05e2\u05d5\u05d1\u05d3 \u05dc\u05db\u05dc \u05d0\u05d7\u05d3');
+    return 1;
+  }
+  const unset = cfg.employees.filter((e) => !String(e.id).trim());
   if (unset.length) {
-    bad(`${unset.length} \u05e2\u05d5\u05d1\u05d3\u05d9\u05dd \u05e2\u05dd id=0: ${unset.map((e) => e.name).join(', ')}`,
-      "\u05de\u05dc\u05d0 \u05d0\u05ea \u05de\u05e1\u05e4\u05e8\u05d9 \u05d4\u05e2\u05d5\u05d1\u05d3\u05d9\u05dd \u05de\u05d8\u05d9\u05d9\u05dd \u05d5\u05d5\u05d8\u05e5\u05f3 (\u05de\u05e1' \u05e2\u05d5\u05d1\u05d3, \u05db\u05de\u05d5 43)");
+    bad(`${unset.length} \u05e2\u05d5\u05d1\u05d3\u05d9\u05dd \u05d1\u05dc\u05d9 \u05de\u05e1\u05e4\u05e8: ${unset.map((e) => e.name).join(', ')}`,
+      "\u05de\u05dc\u05d0 \u05d0\u05d5\u05ea\u05dd \u05d1-employees.json (\u05de\u05e1' \u05e2\u05d5\u05d1\u05d3 \u05de\u05d8\u05d9\u05d9\u05dd \u05d5\u05d5\u05d8\u05e5', \u05db\u05de\u05d5 43)");
+    info('\u05d0\u05e4\u05e9\u05e8 \u05dc\u05d4\u05de\u05e9\u05d9\u05da \u2014 \u05d4\u05dd \u05e4\u05e9\u05d5\u05d8 \u05dc\u05d0 \u05d9\u05d9\u05e7\u05e8\u05d0\u05d5');
   } else {
     ok(`${cfg.employees.length} \u05e2\u05d5\u05d1\u05d3\u05d9\u05dd \u05e2\u05dd \u05de\u05e1\u05e4\u05e8\u05d9\u05dd`);
   }
@@ -65,21 +64,20 @@ async function main() {
   try {
     const res = await fetch(cfg.baseUrl, { signal: AbortSignal.timeout(15000) });
     // A reply is not the same as reaching TimeWatch: a blocking proxy answers
-    // too, usually 403/407. Treating that as "reachable" would send you
-    // hunting for a credentials bug that isn't there.
+    // too, usually 403/407. Calling that "reachable" would send you hunting
+    // for a credentials bug that isn't there.
     if (res.status === 403 || res.status === 407) {
-      bad(`${cfg.baseUrl} \u05d4\u05d7\u05d6\u05d9\u05e8 HTTP ${res.status} \u2014 \u05db\u05e0\u05e8\u05d0\u05d4 \u05d7\u05e1\u05d9\u05de\u05ea \u05e8\u05e9\u05ea, \u05dc\u05d0 \u05d8\u05d9\u05d9\u05dd \u05d5\u05d5\u05d8\u05e5\u05f3`,
+      bad(`${cfg.baseUrl} \u05d4\u05d7\u05d6\u05d9\u05e8 HTTP ${res.status} \u2014 \u05d7\u05e1\u05d9\u05de\u05ea \u05e8\u05e9\u05ea, \u05dc\u05d0 \u05d8\u05d9\u05d9\u05dd \u05d5\u05d5\u05d8\u05e5'`,
         '\u05d4\u05e8\u05e5 \u05d0\u05ea \u05d6\u05d4 \u05e2\u05dc EYAL. \u05d1\u05e1\u05d1\u05d9\u05d1\u05d4 \u05de\u05e8\u05d5\u05d7\u05e7\u05ea \u05d4\u05d3\u05d5\u05de\u05d9\u05d9\u05df \u05d7\u05e1\u05d5\u05dd \u05d5\u05e9\u05d5\u05dd \u05e1\u05d9\u05e1\u05de\u05d4 \u05dc\u05d0 \u05ea\u05e2\u05d6\u05d5\u05e8');
       return 1;
     }
-    if (!res.ok && res.status >= 500) {
-      bad(`${cfg.baseUrl} \u05d4\u05d7\u05d6\u05d9\u05e8 HTTP ${res.status}`, '\u05d8\u05d9\u05d9\u05dd \u05d5\u05d5\u05d8\u05e5\u05f3 \u05db\u05e0\u05e8\u05d0\u05d4 \u05dc\u05de\u05d8\u05d4. \u05e0\u05e1\u05d4 \u05e9\u05d5\u05d1 \u05de\u05d0\u05d5\u05d7\u05e8 \u05d9\u05d5\u05ea\u05e8');
+    if (res.status >= 500) {
+      bad(`${cfg.baseUrl} \u05d4\u05d7\u05d6\u05d9\u05e8 HTTP ${res.status}`, "\u05d8\u05d9\u05d9\u05dd \u05d5\u05d5\u05d8\u05e5' \u05db\u05e0\u05e8\u05d0\u05d4 \u05dc\u05de\u05d8\u05d4. \u05e0\u05e1\u05d4 \u05e9\u05d5\u05d1 \u05de\u05d0\u05d5\u05d7\u05e8 \u05d9\u05d5\u05ea\u05e8");
       return 1;
     }
     ok(`${cfg.baseUrl} \u05e0\u05d2\u05d9\u05e9 (HTTP ${res.status})`);
   } catch (err) {
-    bad(`${cfg.baseUrl} \u05dc\u05d0 \u05e0\u05d2\u05d9\u05e9: ${err.message}`,
-      '\u05d4\u05e8\u05e5 \u05d0\u05ea \u05d6\u05d4 \u05e2\u05dc EYAL, \u05dc\u05d0 \u05de\u05e1\u05d1\u05d9\u05d1\u05d4 \u05de\u05e8\u05d5\u05d7\u05e7\u05ea');
+    bad(`${cfg.baseUrl} \u05dc\u05d0 \u05e0\u05d2\u05d9\u05e9: ${err.message}`, '\u05d4\u05e8\u05e5 \u05d0\u05ea \u05d6\u05d4 \u05e2\u05dc EYAL, \u05dc\u05d0 \u05de\u05e1\u05d1\u05d9\u05d1\u05d4 \u05de\u05e8\u05d5\u05d7\u05e7\u05ea');
     return 1;
   }
 
@@ -87,10 +85,17 @@ async function main() {
   let result;
   try {
     result = await getConnectedEmployees({ config: cfg });
-    ok(`\u05d4\u05dc\u05d5\u05d2\u05d9\u05df \u05e2\u05d1\u05e8 (${cfg.baseUrl}${cfg.loginPath})`);
+    ok('\u05d4\u05dc\u05d5\u05d2\u05d9\u05df \u05e2\u05d1\u05e8');
   } catch (err) {
-    bad(`\u05d4\u05dc\u05d5\u05d2\u05d9\u05df \u05e0\u05db\u05e9\u05dc: ${err.message}`,
-      '\u05e4\u05ea\u05d7 \u05d0\u05ea \u05d8\u05d9\u05d9\u05dd \u05d5\u05d5\u05d8\u05e5\u05f3 \u05d1\u05db\u05e8\u05d5\u05dd, F12 \u2192 Network, \u05d4\u05ea\u05d7\u05d1\u05e8, \u05d5\u05d4\u05e9\u05d5\u05d5\u05d4 \u05d0\u05ea \u05d4\u05beURL \u05d5\u05e9\u05de\u05d5\u05ea \u05d4\u05e9\u05d3\u05d5\u05ea \u05e9\u05dc \u05d4\u05d1\u05e7\u05e9\u05d4 \u05de\u05d5\u05dc loginPath \u05d1\u05e7\u05d5\u05e0\u05e4\u05d9\u05d2');
+    bad(`\u05d4\u05dc\u05d5\u05d2\u05d9\u05df \u05e0\u05db\u05e9\u05dc: ${err.message}`);
+    if (/no login form/.test(err.message)) {
+      info(`\u05d4\u05d3\u05e3 \u05d1\u05be${cfg.loginPath} \u05dc\u05d0 \u05de\u05db\u05d9\u05dc \u05d8\u05d5\u05e4\u05e1 \u05e2\u05dd \u05e9\u05d3\u05d4 \u05e1\u05d9\u05e1\u05de\u05d4.`);
+      info('\u05d1\u05d3\u05d5\u05e7 \u05d0\u05ea TIMEWATCH_LOGIN_PATH \u05d1\u05e7\u05d5\u05d1\u05e5 \u05d4-env.');
+    } else if (/rejected/.test(err.message)) {
+      info("\u05d8\u05d9\u05d9\u05dd \u05d5\u05d5\u05d8\u05e5' \u05d4\u05d7\u05d6\u05d9\u05e8 \u05d0\u05ea \u05d8\u05d5\u05e4\u05e1 \u05d4\u05dc\u05d5\u05d2\u05d9\u05df \u2014 \u05de\u05e1\u05e4\u05e8 \u05d7\u05d1\u05e8\u05d4, \u05e9\u05dd \u05de\u05e9\u05ea\u05de\u05e9 \u05d0\u05d5 \u05e1\u05d9\u05e1\u05de\u05d4 \u05e9\u05d2\u05d5\u05d9\u05d9\u05dd.");
+    } else {
+      info('\u05d0\u05dd \u05d6\u05d4 \u05d7\u05d5\u05d6\u05e8 \u2014 \u05e6\u05dc\u05dd \u05d0\u05ea \u05d4\u05e9\u05d2\u05d9\u05d0\u05d4 \u05d5\u05e9\u05dc\u05d7.');
+    }
     return 1;
   }
 
@@ -98,7 +103,7 @@ async function main() {
   if (result.errors.length) {
     bad(`${result.errors.length} \u05e2\u05d5\u05d1\u05d3\u05d9\u05dd \u05dc\u05d0 \u05e0\u05e7\u05e8\u05d0\u05d5`);
     result.errors.slice(0, 3).forEach((e) => info(`${e.name}: ${e.error}`));
-    info('\u05d0\u05dd \u05db\u05d5\u05dc\u05dd \u05e0\u05db\u05e9\u05dc\u05d5 \u2014 attendancePath \u05d0\u05d5 \u05d4\u05e4\u05e8\u05de\u05d8\u05e8\u05d9\u05dd \u05e9\u05d2\u05d5\u05d9\u05d9\u05dd (F12 \u2192 Network \u05e2\u05dc update.php)');
+    info("\u05d0\u05dd \u05db\u05d5\u05dc\u05dd \u05e0\u05db\u05e9\u05dc\u05d5 \u2014 TIMEWATCH_ATTENDANCE_PATH \u05d0\u05d5 \u05d4\u05e4\u05e8\u05de\u05d8\u05e8\u05d9\u05dd \u05e9\u05d2\u05d5\u05d9\u05d9\u05dd");
   }
   const read = result.connected.length + result.away.length;
   if (read === 0) {
@@ -110,16 +115,14 @@ async function main() {
   console.log('\n=== 5. \u05d4\u05ea\u05d5\u05e6\u05d0\u05d4 ===');
   if (result.connected.length === 0) {
     info('\u05d0\u05e3 \u05d0\u05d7\u05d3 \u05dc\u05d0 \u05de\u05e1\u05d5\u05de\u05df \u05db\u05e0\u05d5\u05db\u05d7 \u05db\u05e8\u05d2\u05e2.');
-    info('\u05d0\u05dd \u05d6\u05d4 \u05dc\u05d0 \u05e0\u05db\u05d5\u05df \u2014 \u05db\u05e0\u05e8\u05d0\u05d4 punchOffsets \u05e9\u05d2\u05d5\u05d9. \u05e4\u05ea\u05d7 \u05d0\u05ea update.php,');
-    info('\u05e1\u05e4\u05d5\u05e8 \u05d1\u05d0\u05d9\u05d6\u05d4 \u05ea\u05d0 \u05d9\u05d5\u05e9\u05d1\u05d5\u05ea \u05d4\u05db\u05e0\u05d9\u05e1\u05d4 \u05d5\u05d4\u05d9\u05e6\u05d9\u05d0\u05d4, \u05d5\u05e2\u05d3\u05db\u05df \u05d1\u05e7\u05d5\u05e0\u05e4\u05d9\u05d2.');
+    info('\u05d0\u05dd \u05d6\u05d4 \u05dc\u05d0 \u05e0\u05db\u05d5\u05df \u2014 punchOffsets \u05db\u05e0\u05e8\u05d0\u05d4 \u05e9\u05d2\u05d5\u05d9. \u05e4\u05ea\u05d7 \u05d0\u05ea \u05d3\u05e3 \u05d4\u05e0\u05d5\u05db\u05d7\u05d5\u05ea,');
+    info('\u05e1\u05e4\u05d5\u05e8 \u05d1\u05d0\u05d9\u05d6\u05d4 \u05ea\u05d0 \u05d9\u05d5\u05e9\u05d1\u05d5\u05ea \u05d4\u05db\u05e0\u05d9\u05e1\u05d4 \u05d5\u05d4\u05d9\u05e6\u05d9\u05d0\u05d4, \u05d5\u05d4\u05d5\u05e1\u05e3 punchOffsets \u05dc-employees.json.');
   } else {
     result.connected.forEach((e) => info(`\u05e0\u05d5\u05db\u05d7: ${e.name} \u2014 \u05de\u05be${e.since} (${e.minutes} \u05d3\u05e7')`));
   }
-  if (result.away.length) {
-    info(`\u05dc\u05d0 \u05e0\u05d5\u05db\u05d7\u05d9\u05dd: ${result.away.map((e) => e.name).join(', ')}`);
-  }
+  if (result.away.length) info(`\u05dc\u05d0 \u05e0\u05d5\u05db\u05d7\u05d9\u05dd: ${result.away.map((e) => e.name).join(', ')}`);
 
-  console.log('\n\u05d4\u05e9\u05d5\u05d5\u05d4 \u05de\u05d5\u05dc \u05d8\u05d9\u05d9\u05dd \u05d5\u05d5\u05d8\u05e5\u05f3 \u05d1\u05d3\u05e4\u05d3\u05e4\u05df. \u05ea\u05d5\u05d0\u05dd \u2192 \u05de\u05d5\u05db\u05df \u05dc\u05d4\u05d8\u05de\u05e2\u05d4.\n');
+  console.log("\n\u05d4\u05e9\u05d5\u05d5\u05d4 \u05de\u05d5\u05dc \u05d8\u05d9\u05d9\u05dd \u05d5\u05d5\u05d8\u05e5' \u05d1\u05d3\u05e4\u05d3\u05e4\u05df. \u05ea\u05d5\u05d0\u05dd \u2192 \u05de\u05d5\u05db\u05df \u05dc\u05d4\u05d8\u05de\u05e2\u05d4.\n");
   return 0;
 }
 
