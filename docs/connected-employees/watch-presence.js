@@ -21,26 +21,46 @@ const { getConnectedEmployees, loadConfig, describeError } = require('./timewatc
 const { createWatcher } = require('./presence-watcher');
 const { createNotifier, resolveQueueDir } = require('./notify-presence');
 const { createToastNotifier } = require('./notify-toast');
+const { readNotifierConfig, createPanelNotifier } = require('./notifier-bridge');
 
 /**
- * Where the alert goes.
+ * Where the alert goes, best channel first.
  *
- * The office notifier is a Python app with no known file queue, so the queue
- * is used only when one is configured and actually present. Everything else
- * falls back to a Windows tray balloon, which needs nothing installed - an
- * alert that arrives is worth more than the right channel that does not.
+ * 1. The office notifier's own panel, if its config is there. The alert then
+ *    appears where every other office notification already appears.
+ * 2. A configured file queue, if one is set and present.
+ * 3. A Windows tray balloon, which needs nothing installed.
+ *
+ * Each falls through to the next on failure rather than losing the event: an
+ * alert in the wrong place beats an alert nowhere.
  */
 function chooseNotifier(cfg) {
   const configured = (cfg.notifier && cfg.notifier.queueDir) || null;
+  const toast = createToastNotifier();
+
   if (configured) {
     try {
       resolveQueueDir(configured);
       return createNotifier(cfg.notifier);
     } catch (err) {
-      console.error(`[presence] ${err.message} - falling back to a tray balloon`);
+      console.error(`[presence] ${err.message} - trying the office panel`);
     }
   }
-  return createToastNotifier();
+
+  try {
+    readNotifierConfig((cfg.notifier && cfg.notifier.appDir) || undefined);
+    const panel = createPanelNotifier({ appDir: cfg.notifier && cfg.notifier.appDir });
+    return (event) => {
+      try {
+        return panel(event);
+      } catch (err) {
+        console.error(`[presence] office panel: ${err.message} - showing a balloon instead`);
+        return toast(event);
+      }
+    };
+  } catch {
+    return toast;
+  }
 }
 
 const DATA_DIR = process.env.TIMEWATCH_DATA || path.join(__dirname, 'data');

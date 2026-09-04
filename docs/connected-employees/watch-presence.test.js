@@ -128,6 +128,34 @@ function run(dataDir, payload, alerts, when) {
       typeof chooseNotifier({}), 'function');
   }
 
+  // The panel is preferred over the balloon, and a broken panel still gets
+  // the alert out rather than losing it.
+  {
+    const office = fs.mkdtempSync(path.join(os.tmpdir(), 'notif-office-'));
+    const appDir = path.join(office, 'app');
+    const dataFolder = path.join(office, 'data');
+    fs.mkdirSync(appDir, { recursive: true });
+    fs.mkdirSync(path.join(dataFolder, 'outbox', 'eyal'), { recursive: true });
+    fs.writeFileSync(path.join(appDir, 'config.json'),
+      JSON.stringify({ data_folder: dataFolder, employee_name: 'eyal' }), 'utf8');
+
+    const notify = chooseNotifier({ notifier: { appDir } });
+    notify({ type: 'in', name: 'זילברברג ברינה', since: '09:04', at: 'x' });
+    const written = fs.readdirSync(path.join(dataFolder, 'outbox', 'eyal'));
+    eq('the alert goes to the office panel', written.length, 1);
+    eq('and reads as a presence alert',
+      JSON.parse(fs.readFileSync(path.join(dataFolder, 'outbox', 'eyal', written[0]), 'utf8')).title,
+      'נוכחות — כניסה');
+
+    // No notifier config anywhere: fall through rather than throw.
+    let threw = null;
+    try {
+      chooseNotifier({ notifier: { appDir: path.join(office, 'nope') } })(
+        { type: 'out', name: 'ברינה', since: '09:04', at: 'x' });
+    } catch (err) { threw = err.message; }
+    eq('a missing notifier falls through to the balloon', threw, null);
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

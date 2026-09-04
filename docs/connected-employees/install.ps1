@@ -13,7 +13,8 @@ $Branch    = 'claude/connected-employees-dashboard-08zle6'
 $BaseUrl   = "https://raw.githubusercontent.com/Eyal-ra/Eyal/$Branch/docs/connected-employees"
 $Files     = @(
   'timewatch-client.js', 'login-form.js', 'attendance-form.js',
-  'presence-watcher.js', 'notify-presence.js', 'notify-toast.js', 'watch-presence.js',
+  'presence-watcher.js', 'notify-presence.js', 'notify-toast.js',
+  'notifier-bridge.js', 'watch-presence.js',
   'verify-setup.js', 'probe.js', 'employees.json'
 )
 
