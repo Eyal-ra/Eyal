@@ -27,6 +27,25 @@ const ID_KEYS = ['id', 'message_id', 'msg_id'];
 const TIME_KEYS = ['created_at', 'created', 'timestamp', 'ts', 'at', 'date', 'sent_at'];
 const TO_KEYS = ['to', 'to_employee', 'employee', 'recipient'];
 
+/**
+ * Fields that decide how the panel behaves, not how it looks.
+ *
+ * Copying these from the template is what turned the first real alert into a
+ * message waiting for a reply, carrying a link to an unrelated service. A
+ * presence alert is an announcement: it wants no answer, and there is
+ * nothing to click. Keys absent from the template stay absent.
+ */
+const BEHAVIOUR = {
+  expects_reply: false,
+  reply_options: [],
+  link: '',
+  auto_close_seconds: 45,
+};
+
+/** Who the alert is from, rather than whoever the template was from. */
+const FROM_KEYS = ['from', 'sender', 'source_name'];
+const FROM_LABEL = 'נוכחות';
+
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
 
 function readNotifierConfig(appDir = APP_DIR) {
@@ -110,6 +129,8 @@ function buildPanelMessage(template, event, options = {}) {
     if (ID_KEYS.includes(key)) { message[key] = options.id || newId(now); continue; }
     if (TIME_KEYS.includes(key)) { message[key] = now.toISOString(); continue; }
     if (TO_KEYS.includes(key)) { message[key] = employee ?? value; continue; }
+    if (key in BEHAVIOUR) { message[key] = BEHAVIOUR[key]; continue; }
+    if (FROM_KEYS.includes(key)) { message[key] = value === null ? null : FROM_LABEL; continue; }
     // Structural fields - type, status, flags - keep the template's value, so
     // the panel renders this the way it renders a message it wrote itself.
     // An invented type could be one the panel has no branch for.

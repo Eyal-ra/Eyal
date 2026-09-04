@@ -117,5 +117,30 @@ const arrival = { type: 'in', name: 'זילברברג ברינה', since: '09:04
     messagesUnder(dir).some((m) => /conflicted/i.test(m.file)), false);
 }
 
+// The first real alert came back as a message waiting for a reply, carrying a
+// link to an unrelated service - both copied from the template. A presence
+// alert is an announcement: it wants no answer and there is nothing to click.
+{
+  const office = makeOffice({ template: {
+    id: 'msg-1', type: 'reminder', title: 'תזכורת', body: 'טקסט של מישהו',
+    to: 'Eyal', from: 'שעון שעות', from_employee: null,
+    created_at: '2026-09-03T21:02:37.000Z', auto_close_seconds: 45,
+    expects_reply: true, reply_options: ['כן', 'לא'], link: 'http://EYAL:3020/',
+  } });
+  const found = findTemplate(office.dataFolder, 'eyal');
+  const message = buildPanelMessage(found.message, arrival, { employee: 'Eyal', now, id: 'p-2' });
+
+  eq('it does not ask for a reply',
+    [message.expects_reply, message.reply_options], [false, []]);
+  eq('it carries no link to somewhere else', message.link, '');
+  eq('it says who it is from', message.from, 'נוכחות');
+  eq('a null stays null rather than becoming a label', message.from_employee, null);
+  eq('the type the panel knows is kept', message.type, 'reminder');
+  eq('and the text is the alert', [message.title, message.body],
+    ['נוכחות — כניסה', 'זילברברג ברינה נכנס/ה — מ־09:04']);
+  eq('a key the template lacks is not invented', 'link' in buildPanelMessage(
+    { id: 'x', title: 't', body: 'b' }, arrival, { now }), false);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
