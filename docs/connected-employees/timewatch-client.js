@@ -75,6 +75,60 @@ function loadConfig(options = {}) {
   return cfg;
 }
 
+/**
+ * What actually went wrong.
+ *
+ * Node's fetch reports every network failure as the same three words -
+ * "fetch failed" - and puts the reason in err.cause. Without it a DNS
+ * failure, a refused connection and an expired certificate are one
+ * indistinguishable message, which is a wasted round trip through a person
+ * every time one happens.
+ */
+function describeError(err) {
+  const cause = err && err.cause;
+  if (!cause) return err ? err.message : String(err);
+  const detail = cause.code || cause.message || String(cause);
+  return detail && !err.message.includes(detail) ? `${err.message} (${detail})` : err.message;
+}
+
+// A network error is worth one more try; an HTTP answer is not - the server
+// spoke, and asking again will not change its mind.
+const TRANSIENT = new Set([
+  'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EAI_AGAIN', 'ENOTFOUND',
+  'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET', 'UND_ERR_HEADERS_TIMEOUT',
+]);
+const isTransient = (err) => Boolean(
+  err && (err.name === 'TimeoutError' || TRANSIENT.has(err.code)
+    || (err.cause && TRANSIENT.has(err.cause.code))));
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * fetch with a short retry, because a single blip should not cost a poll.
+ *
+ * The poll runs every few minutes, so waiting a second and trying again is
+ * cheaper than skipping a cycle - and skipping is not free: it delays the
+ * alert this whole system exists to send.
+ */
+async function httpFetch(cfg, url, options = {}, attempts = 3) {
+  const { retryDelayMs, ...init } = options;
+  let last = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      // A fresh timeout each attempt: one made by the caller would already
+      // have fired by the time the retry runs.
+      return await fetch(url, { ...init, signal: AbortSignal.timeout(cfg.requestTimeoutMs) });
+    } catch (err) {
+      last = err;
+      if (!isTransient(err) || attempt === attempts) break;
+      await sleep(retryDelayMs ?? 200 * attempt);
+    }
+  }
+  const error = new Error(`${url}: ${describeError(last)}`);
+  error.cause = last;
+  throw error;
+}
+
 /** TimeWatch serves legacy Hebrew pages; honour the declared charset. */
 async function readBody(res) {
   const match = /charset=([\w-]+)/i.exec(res.headers.get('content-type') || '');
@@ -108,7 +162,7 @@ async function login(cfg) {
 
   // Read the form first: its field names are not documented, and a wrong
   // guess is indistinguishable from a wrong password.
-  const pageRes = await fetch(loginUrl, { signal: AbortSignal.timeout(cfg.requestTimeoutMs) });
+  const pageRes = await httpFetch(cfg, loginUrl);
   if (!pageRes.ok) throw new Error(`login page ${pageRes.status} at ${loginUrl}`);
   collectCookies(pageRes, jar);
   const form = discoverLoginForm(await readBody(pageRes));
@@ -118,7 +172,7 @@ async function login(cfg) {
     ? new URL(form.action, loginUrl).toString()
     : loginUrl;
 
-  const res = await fetch(action, {
+  const res = await httpFetch(cfg, action, {
     method: 'POST',
     body: buildLoginBody(form, cfg),
     headers: {
@@ -127,7 +181,6 @@ async function login(cfg) {
       referer: loginUrl,
     },
     redirect: 'manual',
-    signal: AbortSignal.timeout(cfg.requestTimeoutMs),
   });
   collectCookies(res, jar);
 
@@ -273,10 +326,7 @@ function extractDayPunches(html, date, offsets) {
  * ------------------------------------------------------------------ */
 
 async function getPage(cfg, jar, url) {
-  const res = await fetch(url, {
-    headers: { cookie: cookieHeader(jar) },
-    signal: AbortSignal.timeout(cfg.requestTimeoutMs),
-  });
+  const res = await httpFetch(cfg, url, { headers: { cookie: cookieHeader(jar) } });
   if (!res.ok) throw new Error(`${url} returned ${res.status}`);
   return readBody(res);
 }
@@ -332,7 +382,7 @@ async function requestReport(cfg, jar, attendance, plan, employeeId, date) {
     : buildAttendanceQuery(attendance.form, options);
 
   if (plan.method === 'post') {
-    const res = await fetch(attendance.url, {
+    const res = await httpFetch(cfg, attendance.url, {
       method: 'POST',
       body: params.toString(),
       headers: {
@@ -340,7 +390,6 @@ async function requestReport(cfg, jar, attendance, plan, employeeId, date) {
         cookie: cookieHeader(jar),
         referer: attendance.url,
       },
-      signal: AbortSignal.timeout(cfg.requestTimeoutMs),
     });
     if (!res.ok) throw new Error(`${attendance.url} returned ${res.status}`);
     return readBody(res);
@@ -495,5 +544,6 @@ async function getConnectedEmployees(options = {}) {
 module.exports = {
   getConnectedEmployees, loadConfig, extractDayPunches, minutesSince, parseEnv,
   discoverAttendance, PUNCH_OFFSETS, rowsWithCells, punchColumnsFromHeader,
+  describeError, isTransient, httpFetch,
   negotiateRequest, REQUEST_PLANS,
 };

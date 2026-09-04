@@ -17,7 +17,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { getConnectedEmployees, loadConfig } = require('./timewatch-client');
+const { getConnectedEmployees, loadConfig, describeError } = require('./timewatch-client');
 const { createWatcher } = require('./presence-watcher');
 const { createNotifier } = require('./notify-presence');
 
@@ -109,7 +109,7 @@ if (require.main === module) {
   main({ quiet })
     .then((code) => process.exit(code))
     .catch((err) => {
-      console.error('[presence] failed:', err.message);
+      console.error('[presence] failed:', describeError(err));
       process.exit(1);
     });
 }
