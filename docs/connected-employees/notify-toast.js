@@ -15,7 +15,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFile } = require('child_process');
+const { execFile, execFileSync } = require('child_process');
 
 /** Single-quoted PowerShell string: the only escape inside one is ''. */
 const psString = (value) => `'${String(value).replace(/'/g, "''")}'`;
@@ -92,4 +92,40 @@ function createToastNotifier(options = {}) {
   };
 }
 
-module.exports = { createToastNotifier, buildToastScript, showToast, messageFor, psString };
+/**
+ * Show one balloon and wait, reporting what happened.
+ *
+ * The fire-and-forget path returns before Windows has drawn anything, so
+ * "no error" says nothing about whether an alert would actually arrive -
+ * which is the only question worth asking of an alert channel.
+ */
+function testToast(options = {}) {
+  const message = messageFor({ type: 'in', name: options.name || 'בדיקה', since: '09:04' });
+  if ((options.platform || process.platform) !== 'win32') {
+    console.log(`not Windows - would have shown: ${message.title} / ${message.text}`);
+    return 0;
+  }
+  const file = showToast({ ...message, seconds: options.seconds || 6 },
+    { ...options, dryRun: true });
+  console.log(`script: ${file}`);
+  try {
+    execFileSync('powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', file],
+      { stdio: 'inherit', windowsHide: true });
+    console.log('powershell finished without error - a balloon should have appeared');
+    return 0;
+  } catch (err) {
+    console.error(`powershell failed (exit ${err.status}): ${err.message}`);
+    return 1;
+  } finally {
+    try { fs.unlinkSync(file); } catch { /* already gone */ }
+  }
+}
+
+if (require.main === module) {
+  process.exit(testToast({ name: process.argv[2] }));
+}
+
+module.exports = {
+  createToastNotifier, buildToastScript, showToast, messageFor, psString, testToast,
+};
