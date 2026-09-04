@@ -17,7 +17,8 @@ const fs = require('fs');
 const path = require('path');
 const { discoverLoginForm, buildLoginBody } = require('./login-form');
 const {
-  discoverAttendanceForm, buildAttendanceQuery, discoverEmployees,
+  discoverAttendanceForm, buildAttendanceQuery, buildAttendanceQueryWithSubmit,
+  discoverEmployees,
 } = require('./attendance-form');
 
 // Secrets live in a .env under C:\OfficeSecrets; everything else (employee
@@ -192,6 +193,35 @@ function rowsWithCells(html) {
       .map((cell) => textOf(cell.replace(/<\/t[dh]>[\s\S]*$/i, ''))));
 }
 
+/**
+ * The punch columns as the page's own header names them.
+ *
+ * Offsets from the date cell are a guess about layout; a header that says
+ * "כניסה" and "יציאה" is the page stating it. When the header is
+ * there it wins, because it also rules out the two columns that read like
+ * clock times but are not punches - standard hours and the daily total.
+ *
+ * @returns {Array<[number, number]>|null} absolute [entry, exit] cell indices
+ */
+function punchColumnsFromHeader(html) {
+  for (const cells of rowsWithCells(html)) {
+    if (cells.length < 4) continue;
+    const entries = [];
+    const exits = [];
+    cells.forEach((cell, i) => {
+      // Anchored on the stem, so "שעת כניסה" and "כניסה 2" both count.
+      if (/\u05db\u05e0\u05d9\u05e1/.test(cell) || /\bentry\b/i.test(cell)) entries.push(i);
+      else if (/\u05d9\u05e6\u05d9\u05d0/.test(cell) || /\bexit\b/i.test(cell)) exits.push(i);
+    });
+    if (!entries.length || entries.length !== exits.length) continue;
+    const pairs = entries.map((e, i) => [e, exits[i]]);
+    // An exit column always sits to the right of the entry it closes; if it
+    // does not, this row is prose about attendance, not a header.
+    if (pairs.every(([e, x]) => x > e)) return pairs;
+  }
+  return null;
+}
+
 function timeAt(cells, index) {
   const value = (cells[index] || '').trim();
   return EXACT_TIME_RE.test(value) ? value : null;
@@ -205,20 +235,25 @@ function timeAt(cells, index) {
  * no exit yet.
  */
 function extractDayPunches(html, date, offsets) {
-  const punchOffsets = offsets || PUNCH_OFFSETS;
   const day = date.getDate();
   const month = date.getMonth() + 1;
   // The page writes dates as "\u05d3 02-09-2026"; allow ./- and an optional zero.
   const dateRe = new RegExp(`(^|\\D)0?${day}[./-]0?${month}[./-]\\d{4}`);
 
+  // A configured override beats everything; then the page's own header; then
+  // the layout seen on this account.
+  const header = offsets ? null : punchColumnsFromHeader(html);
+  const punchOffsets = offsets || PUNCH_OFFSETS;
+
   for (const cells of rowsWithCells(html)) {
     const dateIdx = cells.findIndex((c) => dateRe.test(c));
     if (dateIdx === -1) continue;
 
+    const columns = header || punchOffsets.map(([e, x]) => [dateIdx + e, dateIdx + x]);
     const pairs = [];
-    for (const [e, x] of punchOffsets) {
-      const entry = timeAt(cells, dateIdx + e);
-      const exit = timeAt(cells, dateIdx + x);
+    for (const [e, x] of columns) {
+      const entry = timeAt(cells, e);
+      const exit = timeAt(cells, x);
       if (entry || exit) pairs.push({ entry, exit });
     }
     const open = pairs.filter((p) => p.entry && !p.exit);
@@ -270,24 +305,105 @@ async function discoverAttendance(cfg, jar) {
   };
 }
 
-async function fetchEmployeeMonth(cfg, jar, employeeId, date, attendance) {
-  const year = date.getFullYear();
-  const month = date.getMonth() + 1;
+/**
+ * The four ways this form could want to be submitted.
+ *
+ * A page that answers a wrong request with its own filter bar and no data
+ * looks exactly like a page reporting an empty month, so the difference
+ * cannot be reasoned out - only measured. Ordered by what a browser does
+ * most often, so the common case is settled on the first try.
+ */
+const REQUEST_PLANS = [
+  { method: 'get', submit: false },
+  { method: 'post', submit: false },
+  { method: 'get', submit: true },
+  { method: 'post', submit: true },
+];
 
-  let url;
-  if (attendance) {
-    const params = buildAttendanceQuery(attendance.form, { employeeId, year, month });
-    url = `${attendance.url}?${params}`;
-  } else {
-    // Nothing to learn from - fall back to the parameters the employee
-    // portal uses, which is all there was before discovery.
-    const params = new URLSearchParams({
-      ee: String(employeeId), e: String(cfg.company),
-      y: String(year), m: String(month), ...(cfg.extraParams || {}),
+const DATE_IN_CELL = /\b\d{1,2}[./-]\d{1,2}[./-]\d{4}\b/;
+/** Did this answer carry a report, or just the filter bar again? */
+const hasReport = (html) =>
+  rowsWithCells(html).some((cells) => cells.some((c) => DATE_IN_CELL.test(c)));
+
+async function requestReport(cfg, jar, attendance, plan, employeeId, date) {
+  const options = { employeeId, year: date.getFullYear(), month: date.getMonth() + 1 };
+  const params = plan.submit
+    ? buildAttendanceQueryWithSubmit(attendance.form, options)
+    : buildAttendanceQuery(attendance.form, options);
+
+  if (plan.method === 'post') {
+    const res = await fetch(attendance.url, {
+      method: 'POST',
+      body: params.toString(),
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        cookie: cookieHeader(jar),
+        referer: attendance.url,
+      },
+      signal: AbortSignal.timeout(cfg.requestTimeoutMs),
     });
-    url = `${cfg.baseUrl}${cfg.attendancePath}?${params}`;
+    if (!res.ok) throw new Error(`${attendance.url} returned ${res.status}`);
+    return readBody(res);
   }
-  return getPage(cfg, jar, url);
+  return getPage(cfg, jar, `${attendance.url}?${params}`);
+}
+
+/**
+ * Settle how the report wants to be asked for, once per run.
+ *
+ * The alternative is a person running a diagnostic and reporting back which
+ * of four requests worked, which costs a round trip through a human for
+ * something the code can measure in four requests of its own. The answer is
+ * remembered on the discovery object, so the rest of the roster is fetched
+ * with one request each.
+ *
+ * More than one employee is offered, because a single person with no punches
+ * this month would otherwise look like a broken request.
+ *
+ * @returns {Promise<{plan:Object, employeeId:string, html:string}>} the
+ *   winning plan and the page it produced, so that employee is not fetched
+ *   twice.
+ */
+async function negotiateRequest(cfg, jar, attendance, employeeIds, date) {
+  const tried = [];
+  let last = null;
+  const plans = REQUEST_PLANS.filter((plan) =>
+    // A plan that would send no submit button is the same request as the one
+    // before it, so skip it rather than spend a round trip proving that.
+    !plan.submit || Object.keys(attendance.form.submits || {}).length);
+
+  for (const employeeId of employeeIds) {
+    for (const plan of plans) {
+      const label = `${plan.method.toUpperCase()}${plan.submit ? ' + submit' : ''}`;
+      try {
+        const html = await requestReport(cfg, jar, attendance, plan, employeeId, date);
+        last = html;
+        if (hasReport(html)) return { plan, employeeId, html };
+        const note = `${label}: no data rows`;
+        if (!tried.includes(note)) tried.push(note);
+      } catch (err) {
+        tried.push(`${label}: ${err.message}`);
+      }
+    }
+  }
+  const error = new Error(`the report returned no data rows (tried ${tried.join('; ')})`);
+  error.lastHtml = last;
+  throw error;
+}
+
+async function fetchEmployeeMonth(cfg, jar, employeeId, date, attendance) {
+  if (attendance) {
+    return requestReport(cfg, jar, attendance, attendance.plan || REQUEST_PLANS[0],
+      employeeId, date);
+  }
+  // Nothing to learn from - fall back to the parameters the employee portal
+  // uses, which is all there was before discovery.
+  const params = new URLSearchParams({
+    ee: String(employeeId), e: String(cfg.company),
+    y: String(date.getFullYear()), m: String(date.getMonth() + 1),
+    ...(cfg.extraParams || {}),
+  });
+  return getPage(cfg, jar, `${cfg.baseUrl}${cfg.attendancePath}?${params}`);
 }
 
 function minutesSince(hhmm, now) {
@@ -298,14 +414,17 @@ function minutesSince(hhmm, now) {
 }
 
 /**
- * @returns {Promise<{fetchedAt:string, connected:Array, away:Array, errors:Array}>}
+ * @returns {Promise<{fetchedAt:string, connected:Array, away:Array,
+ *                    errors:Array, warning:string|null}>}
  */
 async function getConnectedEmployees(options = {}) {
   const cfg = options.config || loadConfig();
   const now = options.now || new Date();
-  const jar = await login(cfg);
+  // Both steps are injectable so the whole run can be exercised against a
+  // local server, which is the only way to test the request negotiation.
+  const jar = await (options.login || login)(cfg);
   // One extra request, shared by every employee below.
-  const attendance = await discoverAttendance(cfg, jar).catch(() => null);
+  const attendance = await (options.discover || discoverAttendance)(cfg, jar).catch(() => null);
 
   // The portal's own roster is authoritative; employees.json is only a
   // fallback for when discovery fails, and for who to raise alerts about.
@@ -316,9 +435,29 @@ async function getConnectedEmployees(options = {}) {
   const away = [];
   const errors = [];
 
+  // Settle how the report wants to be asked for before asking seven times.
+  let negotiated = null;
+  let warning = null;
+  if (attendance && roster.length) {
+    try {
+      negotiated = await negotiateRequest(
+        cfg, jar, attendance, roster.slice(0, 3).map((e) => e.id), now);
+      attendance.plan = negotiated.plan;
+    } catch (err) {
+      // Reported rather than swallowed: an empty card that says nothing is
+      // indistinguishable from an office where nobody has clocked in.
+      warning = err.message;
+    }
+  }
+  if (warning) {
+    return { fetchedAt: now.toISOString(), connected: [], away: [], errors: [], warning };
+  }
+
   const results = await Promise.allSettled(
     roster.map(async (emp) => {
-      const html = await fetchEmployeeMonth(cfg, jar, emp.id, now, attendance);
+      const html = negotiated && emp.id === negotiated.employeeId
+        ? negotiated.html
+        : await fetchEmployeeMonth(cfg, jar, emp.id, now, attendance);
       return extractDayPunches(html, now, cfg.punchOffsets);
     })
   );
@@ -340,10 +479,11 @@ async function getConnectedEmployees(options = {}) {
   });
 
   connected.sort((a, b) => b.minutes - a.minutes);
-  return { fetchedAt: now.toISOString(), connected, away, errors };
+  return { fetchedAt: now.toISOString(), connected, away, errors, warning: null };
 }
 
 module.exports = {
   getConnectedEmployees, loadConfig, extractDayPunches, minutesSince, parseEnv,
-  discoverAttendance, PUNCH_OFFSETS, rowsWithCells,
+  discoverAttendance, PUNCH_OFFSETS, rowsWithCells, punchColumnsFromHeader,
+  negotiateRequest, REQUEST_PLANS,
 };

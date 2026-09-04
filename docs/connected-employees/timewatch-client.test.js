@@ -1,4 +1,6 @@
-const { extractDayPunches, minutesSince } = require('./timewatch-client.js');
+const {
+  extractDayPunches, minutesSince, punchColumnsFromHeader,
+} = require('./timewatch-client.js');
 
 let pass = 0, fail = 0;
 function eq(name, got, want) {
@@ -77,6 +79,27 @@ const twoMonths = `<table><tr><td>\u05d3 02-08-2026<td>\u05d3<td>8<td>9:06<td>07
 </table>`;
 eq('picks the right month', pick(extractDayPunches(twoMonths, new Date(2026, 8, 2))),
   { connected: true, since: '09:04', pairs: [{ entry: '09:04', exit: null }], found: true });
+
+// When the page labels its own columns, believe the page rather than the
+// layout this one account happens to have.
+const headed = `<table>
+<tr><th>\u05ea\u05d0\u05e8\u05d9\u05da<th>\u05d9\u05d5\u05dd<th>\u05e9\u05e2\u05d5\u05ea \u05ea\u05e7\u05df<th>\u05db\u05e0\u05d9\u05e1\u05d4<th>\u05d9\u05e6\u05d9\u05d0\u05d4<th>\u05db\u05e0\u05d9\u05e1\u05d4<th>\u05d9\u05e6\u05d9\u05d0\u05d4<th>\u05e1\u05d4"\u05db
+<tr><td>\u05d3 02-09-2026<td>\u05e8\u05d1\u05d9\u05e2\u05d9<td>9:06<td>08:13<td>12:30<td>13:15<td><td>4:17
+</table>`;
+eq('the header names the punch columns', punchColumnsFromHeader(headed), [[3, 4], [5, 6]]);
+eq('a header layout with fewer columns is read correctly',
+  pick(extractDayPunches(headed, new Date(2026, 8, 2))),
+  { connected: true, since: '13:15', pairs: [{ entry: '08:13', exit: '12:30' }, { entry: '13:15', exit: null }], found: true });
+
+// The standard-hours column sits between the date and the first punch here,
+// which the fixed offsets would have read as an entry.
+eq('the header keeps standard hours out of the punches',
+  extractDayPunches(headed, new Date(2026, 8, 2)).pairs.some((p) => p.entry === '9:06'), false);
+
+eq('a page with no header falls back to the offsets', punchColumnsFromHeader(page), null);
+eq('an explicit override beats the header',
+  extractDayPunches(headed, new Date(2026, 8, 2), [[2, 3]]).pairs,
+  [{ entry: '9:06', exit: '08:13' }]);
 
 eq('minutesSince 09:04 -> 12:34', minutesSince('09:04', new Date(2026, 8, 2, 12, 34)), 210);
 

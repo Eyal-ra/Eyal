@@ -138,6 +138,15 @@
       return;
     }
 
+    /* A report that could not be read must never render as an empty office -
+       that is the one wrong answer that looks like a right one. */
+    if (data.warning) {
+      body.appendChild(el('p', 'tw-state tw-error', 'לא הצלחתי לקרוא את הנוכחות'));
+      body.appendChild(el('div', 'tw-away tw-error', data.warning));
+      updatedEl.textContent = '';
+      return;
+    }
+
     var connected = data.connected || [];
     if (connected.length === 0) {
       body.appendChild(el('p', 'tw-state', 'אף אחד לא רשום כנוכח כרגע.'));

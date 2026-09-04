@@ -137,7 +137,8 @@ function discoverEmployees(html) {
 /**
  * @returns {{action:string|null, method:string, fields:Object,
  *            employee:string|null, employeeFields:string[],
- *            employeeSelects:Array, year:string|null, month:string|null}|null}
+ *            employeeSelects:Array, submits:Object,
+ *            year:string|null, month:string|null}|null}
  */
 function discoverAttendanceForm(html, options = {}) {
   const forms = html.match(/<form\b[\s\S]*?<\/form>/gi) || [];
@@ -157,13 +158,18 @@ function discoverAttendanceForm(html, options = {}) {
   }
 
   const fields = {};
+  // Submit controls are kept apart from the fields: a browser sends the one
+  // that was clicked, and old PHP pages routinely gate the report on it, but
+  // resubmitting every submit button as a plain field would be wrong.
+  const submits = {};
   let year = null, month = null, employee = null;
 
   for (const tag of form.match(CONTROL_RE) || []) {
     const name = attr(tag, 'name');
     if (!name) continue;
     const type = (attr(tag, 'type') || 'text').toLowerCase();
-    if (['submit', 'button', 'reset', 'image'].includes(type)) continue;
+    if (type === 'submit' || type === 'image') { submits[name] = attr(tag, 'value') ?? ''; continue; }
+    if (['button', 'reset'].includes(type)) continue;
     if (['checkbox', 'radio'].includes(type) && !/\bchecked\b/i.test(tag)) continue;
     fields[name] = currentValue(tag, selectsByName[name]);
   }
@@ -195,7 +201,7 @@ function discoverAttendanceForm(html, options = {}) {
   return {
     action: attr(form, 'action'),
     method: (attr(form, 'method') || 'get').toLowerCase(),
-    fields, employee, employeeFields, employeeSelects: selects, year, month,
+    fields, employee, employeeFields, employeeSelects: selects, submits, year, month,
   };
 }
 
@@ -212,4 +218,13 @@ function buildAttendanceQuery(form, { employeeId, year, month }) {
   return params;
 }
 
-module.exports = { discoverAttendanceForm, buildAttendanceQuery, discoverEmployees };
+/** The same query plus the form's own submit buttons, as a click would send. */
+function buildAttendanceQueryWithSubmit(form, options) {
+  const params = buildAttendanceQuery(form, options);
+  for (const [name, value] of Object.entries(form.submits || {})) params.set(name, value);
+  return params;
+}
+
+module.exports = {
+  discoverAttendanceForm, buildAttendanceQuery, buildAttendanceQueryWithSubmit, discoverEmployees,
+};

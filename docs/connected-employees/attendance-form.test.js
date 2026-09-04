@@ -1,4 +1,6 @@
-const { discoverAttendanceForm, buildAttendanceQuery, discoverEmployees } = require('./attendance-form.js');
+const {
+  discoverAttendanceForm, buildAttendanceQuery, buildAttendanceQueryWithSubmit, discoverEmployees,
+} = require('./attendance-form.js');
 
 let pass = 0, fail = 0;
 function eq(name, got, want) {
@@ -118,6 +120,30 @@ const singlePage = twinPage.replace(/<select name="emplee_id">[\s\S]*?<\/select>
 eq('a single roster select still works',
   discoverEmployees(singlePage).map((e) => [e.number, e.name.slice(0, 4)]),
   [[null, '\u05d0\u05d5\u05d7\u05d9'], [null, '\u05d3\u05d1\u05d7 '], [null, '\u05d6\u05d9\u05dc\u05d1'], [null, '\u05db\u05d4\u05df ']]);
+
+// The submit button is kept apart from the fields - resubmitting every button
+// as a plain field would be wrong - but an old page may gate the report on it.
+const gated = discoverAttendanceForm(`<form action="update.php">
+  <select name="year"><option value=2026 selected>2026<option value=2025>2025</select>
+  <select name="month"><option value=9 selected>09<option value=1>01<option value=2>02<option value=3>03
+    <option value=4>04<option value=5>05<option value=6>06<option value=7>07<option value=8>08
+    <option value=10>10<option value=11>11<option value=12>12</select>
+  <select name="ee"><option value=0>---<option value=11>\u05d0<option value=22>\u05d1</select>
+  <select name="ee2"><option value=0>---<option value=11>1<option value=22>2</select>
+  <input type=hidden name=csrf value=abc>
+  <input type=submit name=go value="\u05d4\u05e6\u05d2">
+  <input type=reset name=clear value="\u05e0\u05e7\u05d4">
+</form>`);
+eq('submit buttons are held separately', gated.submits, { go: '\u05d4\u05e6\u05d2' });
+eq('a submit button is not a field', 'go' in gated.fields, false);
+eq('a reset button is neither', ['clear' in gated.fields, 'clear' in gated.submits], [false, false]);
+eq('hidden fields survive', gated.fields.csrf, 'abc');
+
+const plain = buildAttendanceQuery(gated, { employeeId: '22', year: 2026, month: 9 });
+eq('the plain query omits the button', plain.get('go'), null);
+const clicked = buildAttendanceQueryWithSubmit(gated, { employeeId: '22', year: 2026, month: 9 });
+eq('the clicked query carries it', [clicked.get('go'), clicked.get('ee'), clicked.get('ee2')],
+  ['\u05d4\u05e6\u05d2', '22', '22']);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

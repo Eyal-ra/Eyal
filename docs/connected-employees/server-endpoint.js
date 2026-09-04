@@ -33,14 +33,18 @@ function registerConnectedEmployees(app, options = {}) {
   let cache = { at: 0, payload: null };
   let inFlight = null;
 
+  const fetchPresence = options.fetchPresence || getConnectedEmployees;
+
   async function refresh() {
     // Collapse concurrent dashboard refreshes into a single TimeWatch login.
-    inFlight = inFlight || getConnectedEmployees({ config: cfg })
+    inFlight = inFlight || fetchPresence({ config: cfg })
       .finally(() => { inFlight = null; });
     const payload = await inFlight;
     // Only a successful read may move the watcher's state: treating a failed
-    // fetch as "nobody is in" would fire a departure alert for everyone.
-    watcher.update(payload.connected);
+    // fetch as "nobody is in" would fire a departure alert for everyone. A
+    // warning is such a failure - it just came back resolved instead of
+    // thrown, which makes it the easier one to get wrong.
+    if (!payload.warning) watcher.update(payload.connected);
     cache = { at: Date.now(), payload };
     return payload;
   }
@@ -55,7 +59,9 @@ function registerConnectedEmployees(app, options = {}) {
     } catch (err) {
       // Never leak credentials or upstream HTML into the dashboard.
       console.error('[connected-employees]', err);
-      res.status(502).json({ error: 'timewatch_unavailable', connected: [], away: [], errors: [] });
+      res.status(502).json({
+        error: 'timewatch_unavailable', connected: [], away: [], errors: [], warning: null,
+      });
     }
   });
 
