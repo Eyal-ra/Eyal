@@ -16,9 +16,12 @@
  * Prints times, names and URLs. No credentials.
  */
 
-const { loadConfig, rowsWithCells } = require('./timewatch-client');
+const { loadConfig, rowsWithCells, REQUEST_PLANS } = require('./timewatch-client');
 const { discoverLoginForm, buildLoginBody } = require('./login-form');
-const { discoverAttendanceForm, buildAttendanceQuery, discoverEmployees } = require('./attendance-form');
+const {
+  discoverAttendanceForm, buildAttendanceQuery, buildAttendanceQueryWithSubmit,
+  discoverEmployees,
+} = require('./attendance-form');
 
 const TIMEOUT = 20000;
 
@@ -65,27 +68,6 @@ const attr = (tag, name) => {
   const m = new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i').exec(tag);
   return m ? (m[2] ?? m[3] ?? m[4] ?? null) : null;
 };
-
-/**
- * The form's own submit controls.
- *
- * Old PHP pages routinely gate the report on `if ($_REQUEST['submit'])`, and
- * a browser sends the clicked button. Discovery deliberately drops submits
- * when resubmitting a form, so they are collected separately here.
- */
-function submitFields(html) {
-  // The whole page, not just the filter form: the page has one real form,
-  // and a heuristic for picking it would be one more thing to be wrong about
-  // while diagnosing something else.
-  const out = {};
-  for (const tag of html.match(/<(input|button)\b[^>]*>/gi) || []) {
-    const type = (attr(tag, 'type') || '').toLowerCase();
-    if (type !== 'submit' && type !== 'image') continue;
-    const name = attr(tag, 'name');
-    if (name) out[name] = attr(tag, 'value') ?? '';
-  }
-  return out;
-}
 
 /** Links that could be the report itself, in case it lives elsewhere. */
 function phpLinks(html) {
@@ -145,7 +127,7 @@ async function main() {
   const employeeId = match ? match.id : wanted;
   if (!employeeId) { console.log('no employee to ask about'); return 1; }
 
-  const submits = submitFields(html);
+  const submits = form.submits || {};
 
   console.log('=== the form ===');
   console.log('  action   :', url);
@@ -156,20 +138,17 @@ async function main() {
   console.log('  asking   :', match ? `${match.name} id=${employeeId}` : employeeId,
               `for ${day}/${month}/${year}`);
 
-  const base = buildAttendanceQuery(form, { employeeId, year, month });
-  const withSubmit = new URLSearchParams(base);
-  for (const [k, v] of Object.entries(submits)) withSubmit.set(k, v);
-
-  const tries = [
-    ['GET', 'get', base], ['POST', 'post', base],
-  ];
-  if (Object.keys(submits).length) {
-    tries.push(['GET + submit', 'get', withSubmit], ['POST + submit', 'post', withSubmit]);
-  }
-
+  // Straight from the client's own list, so this can never report on a
+  // request shape the client would not actually try.
+  const options = { employeeId, year, month };
   const results = [];
-  for (const [label, method, params] of tries) {
-    results.push(await attempt(label, url, method, params, jar));
+  for (const plan of REQUEST_PLANS) {
+    if (plan.submit && !Object.keys(submits).length) continue;
+    const label = `${plan.method.toUpperCase()}${plan.submit ? ' + submit' : ''}`;
+    const params = plan.submit
+      ? buildAttendanceQueryWithSubmit(form, options)
+      : buildAttendanceQuery(form, options);
+    results.push(await attempt(label, url, plan.method, params, jar));
   }
 
   console.log('\n=== results ===');
