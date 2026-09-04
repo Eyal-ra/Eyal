@@ -69,5 +69,20 @@ try { w2.update([brina], now); } catch { survived = false; }
 eq('a failing notifier does not break the poll', survived, true);
 
 fs.rmSync(dir, { recursive: true, force: true });
+// The portal lists "surname given name"; a watch list holding just the given
+// name has to keep working, or alerts silently stop the day it is consulted.
+{
+  const seen = [];
+  const w = createWatcher({
+    logDir: fs.mkdtempSync(path.join(os.tmpdir(), 'presence-')),
+    watchNames: ['\u05d1\u05e8\u05d9\u05e0\u05d4'],
+    notify: (e) => seen.push(e.name),
+  });
+  w.update([], new Date(2026, 8, 4, 8, 0));
+  w.update([{ name: '\u05d6\u05d9\u05dc\u05d1\u05e8\u05d1\u05e8\u05d2 \u05d1\u05e8\u05d9\u05e0\u05d4', since: '09:04' },
+            { name: '\u05e7\u05de\u05d9\u05e0\u05e1\u05e7\u05d9 \u05e2\u05de\u05e8\u05d9', since: '08:10' }], new Date(2026, 8, 4, 9, 5));
+  eq('a given name matches the portal\'s full name', seen, ['\u05d6\u05d9\u05dc\u05d1\u05e8\u05d1\u05e8\u05d2 \u05d1\u05e8\u05d9\u05e0\u05d4']);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -16,7 +16,9 @@
 const fs = require('fs');
 const path = require('path');
 const { discoverLoginForm, buildLoginBody } = require('./login-form');
-const { discoverAttendanceForm, buildAttendanceQuery } = require('./attendance-form');
+const {
+  discoverAttendanceForm, buildAttendanceQuery, discoverEmployees,
+} = require('./attendance-form');
 
 // Secrets live in a .env under C:\OfficeSecrets; everything else (employee
 // numbers, who to alert on) is not secret and sits next to the code.
@@ -255,11 +257,17 @@ async function getPage(cfg, jar, url) {
  */
 async function discoverAttendance(cfg, jar) {
   const url = cfg.baseUrl + cfg.attendancePath;
-  const form = discoverAttendanceForm(await getPage(cfg, jar, url), {
+  const html = await getPage(cfg, jar, url);
+  const form = discoverAttendanceForm(html, {
     knownEmployeeId: cfg.employees.find((e) => String(e.id).trim())?.id,
   });
   if (!form || !form.year || !form.month) return null;
-  return { form, url: form.action ? new URL(form.action, url).toString() : url };
+  return {
+    form,
+    url: form.action ? new URL(form.action, url).toString() : url,
+    // The roster the portal itself lists, so nobody has to maintain one.
+    employees: discoverEmployees(html),
+  };
 }
 
 async function fetchEmployeeMonth(cfg, jar, employeeId, date, attendance) {
@@ -299,26 +307,33 @@ async function getConnectedEmployees(options = {}) {
   // One extra request, shared by every employee below.
   const attendance = await discoverAttendance(cfg, jar).catch(() => null);
 
+  // The portal's own roster is authoritative; employees.json is only a
+  // fallback for when discovery fails, and for who to raise alerts about.
+  const roster = attendance && attendance.employees.length
+    ? attendance.employees : cfg.employees;
+
   const connected = [];
   const away = [];
   const errors = [];
 
   const results = await Promise.allSettled(
-    cfg.employees.map(async (emp) => {
+    roster.map(async (emp) => {
       const html = await fetchEmployeeMonth(cfg, jar, emp.id, now, attendance);
       return extractDayPunches(html, now, cfg.punchOffsets);
     })
   );
 
   results.forEach((result, i) => {
-    const emp = cfg.employees[i];
+    const emp = roster[i];
     if (result.status === 'rejected') {
       errors.push({ name: emp.name, error: String(result.reason?.message || result.reason) });
       return;
     }
     const day = result.value;
     if (day.connected) {
-      connected.push({ name: emp.name, since: day.since, minutes: minutesSince(day.since, now) });
+      connected.push({
+        name: emp.name, since: day.since, minutes: minutesSince(day.since, now),
+      });
     } else {
       away.push({ name: emp.name, lastExit: day.lastExit, punches: day.pairs.length });
     }

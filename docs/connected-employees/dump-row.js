@@ -6,7 +6,7 @@
  * Prints the discovered filter fields and then every cell of the day's row
  * with its index. Times and a name, no credentials.
  *
- *   node dump-row.js [employeeId] [dd/mm/yyyy]
+ *   node dump-row.js [name or number or id] [dd/mm/yyyy]
  */
 
 const { loadConfig, discoverAttendance, rowsWithCells } = require('./timewatch-client');
@@ -78,21 +78,34 @@ function dumpSelects(html) {
 
 async function main() {
   const cfg = loadConfig();
-  const employeeId = process.argv[2] || (cfg.employees.find((e) => String(e.id).trim()) || {}).id;
-  if (!employeeId) { console.log('usage: node dump-row.js <employeeId>'); return 1; }
-
   const arg = process.argv[3];
   const date = arg ? new Date(arg.split('/').reverse().join('-')) : new Date();
 
   const jar = await login(cfg);
   const attendance = await discoverAttendance(cfg, jar);
 
+  const roster = attendance ? attendance.employees : [];
+  if (roster.length) {
+    console.log('\n=== roster read off the page ===');
+    for (const e of roster) console.log(`  id=${e.id}  number=${e.number || '?'}  ${e.name}`);
+  }
+
+  // Accept an internal id, a payroll number, or part of a name.
+  const wanted = process.argv[2];
+  const match = wanted
+    ? roster.find((e) => e.id === wanted || e.number === wanted || e.name.includes(wanted))
+    : roster[0];
+  const employeeId = match ? match.id
+    : wanted || (cfg.employees.find((e) => String(e.id).trim()) || {}).id;
+  if (!employeeId) { console.log('usage: node dump-row.js <name or number>'); return 1; }
+  console.log(`\n=== asking about ===\n  ${match ? match.name : employeeId} (id ${employeeId})`);
+
   console.log('\n=== discovered filter form ===');
   if (!attendance) {
     console.log('  none - falling back to ee/e/y/m');
   } else {
     console.log('  url      :', attendance.url);
-    console.log('  employee :', attendance.form.employee);
+    console.log('  employee :', (attendance.form.employeeFields || []).join(', '));
     console.log('  year     :', attendance.form.year);
     console.log('  month    :', attendance.form.month);
     console.log('  fields   :', JSON.stringify(attendance.form.fields));

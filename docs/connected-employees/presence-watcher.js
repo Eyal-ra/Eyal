@@ -83,9 +83,12 @@ function readDayLog(dir, date) {
  */
 function createWatcher(options = {}) {
   const dir = options.logDir || 'presence-log';
+  // Matched as a substring: the portal lists people as "surname given name",
+  // and the point is to be able to write a given name and have it work.
   const watchNames = options.watchNames && options.watchNames.length
-    ? new Set(options.watchNames)
+    ? options.watchNames.map((n) => String(n).trim()).filter(Boolean)
     : null;
+  const watched = (name) => !watchNames || watchNames.some((n) => String(name).includes(n));
   const notify = options.notify || (() => {});
   let previous = options.initialSnapshot ?? null;
 
@@ -97,7 +100,7 @@ function createWatcher(options = {}) {
       appendEvents(dir, events, now);
       for (const event of events) {
         if (event.type === 'initial') continue;
-        if (watchNames && !watchNames.has(event.name)) continue;
+        if (!watched(event.name)) continue;
         try {
           notify(event);
         } catch (err) {
