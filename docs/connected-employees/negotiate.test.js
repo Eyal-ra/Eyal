@@ -138,6 +138,40 @@ async function attendanceFor(server) {
     server.close();
   }
 
+  // 7. An empty roster reached the same "nobody is in" as a working read of
+  // an empty office. Two very different facts, one identical line.
+  {
+    const server = await startServer(() => true);
+    const attendance = await attendanceFor(server);
+    attendance.employees = [];
+    const result = await getConnectedEmployees({
+      config: { ...cfg, employees: [], watchNames: [] },
+      now: new Date(2026, 8, 4, 15, 30),
+      login: async () => ({}),
+      discover: async () => attendance,
+    });
+    eq('an empty roster is a warning, not an empty office',
+      [result.connected.length, /no employees found/.test(result.warning || '')], [0, true]);
+    eq('and nothing was requested', server.seen.length, 0);
+    server.close();
+  }
+
+  // A genuinely quiet office still reads as one.
+  {
+    const server = await startServer((method, p) => method === 'POST' && p.get('go') === 'הצג');
+    const attendance = await attendanceFor(server);
+    const result = await getConnectedEmployees({
+      config: { ...cfg, employees: [], watchNames: [] },
+      // Long after the last punch of the day in the fixture.
+      now: new Date(2026, 8, 3, 15, 30),
+      login: async () => ({}),
+      discover: async () => attendance,
+    });
+    eq('nobody in on a day with no punches is not a warning',
+      [result.connected.length, result.away.length, result.warning], [0, 1, null]);
+    server.close();
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

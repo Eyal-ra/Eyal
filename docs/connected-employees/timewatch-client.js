@@ -435,10 +435,20 @@ async function getConnectedEmployees(options = {}) {
   const away = [];
   const errors = [];
 
+  // An empty roster reaches the same "nobody is in" as a working read of an
+  // empty office, which is the one wrong answer that looks like a right one.
+  if (!roster.length) {
+    return {
+      fetchedAt: now.toISOString(), connected: [], away: [], errors: [],
+      warning: 'no employees found - the attendance page listed none and '
+        + 'employees.json has none either',
+    };
+  }
+
   // Settle how the report wants to be asked for before asking seven times.
   let negotiated = null;
   let warning = null;
-  if (attendance && roster.length) {
+  if (attendance) {
     try {
       negotiated = await negotiateRequest(
         cfg, jar, attendance, roster.slice(0, 3).map((e) => e.id), now);

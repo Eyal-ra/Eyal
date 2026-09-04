@@ -92,7 +92,12 @@ async function main(options = {}) {
   });
 
   const changes = events.filter((e) => e.type !== 'initial');
-  log(`[presence] ${result.connected.length} in, ${changes.length} change(s)`);
+  // The employee count is not decoration: "0 in" out of seven is a quiet
+  // office, "0 in" out of zero is a broken read, and they used to print the
+  // same line.
+  const read = result.connected.length + result.away.length;
+  log(`[presence] ${read} employees read, ${result.connected.length} in, `
+    + `${changes.length} change(s)`);
   for (const event of changes) {
     log(`  ${event.type === 'in' ? 'נכנס/ה' : 'יצא/ה'}: ${event.name}`);
   }
