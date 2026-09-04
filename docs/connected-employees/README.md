@@ -97,6 +97,24 @@
 
 ## התקנה
 
+הדבקה אחת ב-PowerShell על המכונה שרואה את טיים ווטץ':
+
+```powershell
+$ProgressPreference = 'SilentlyContinue'
+$u = "https://raw.githubusercontent.com/Eyal-ra/Eyal/claude/connected-employees-dashboard-08zle6/docs/connected-employees/install.ps1"
+Invoke-WebRequest $u -UseBasicParsing | Select-Object -ExpandProperty Content | Invoke-Expression
+```
+
+`install.ps1` מוריד את הקבצים ל-`C:\OfficeSystems\timewatch-presence`, מבקש
+את הסיסמה אם היא חסרה (נכתבת רק ל-`C:\OfficeSecrets\timewatch.env`), מריץ
+בדיקה אחת, ורושם משימה מתוזמנת כל 5 דקות. אחרי זה זה רץ לבד — **Claude
+לא נדרש להרצה, רק לכתיבה**. המשימה רצה רק כשאתה מחובר, כדי שלא תישמר סיסמה
+במתזמן.
+
+לעצירה: `Unregister-ScheduledTask -TaskName TimeWatchPresence -Confirm:$false`
+
+### התקנה ידנית (הצעדים שה-install עושה)
+
 1. `copy timewatch.env.example C:\OfficeSecrets\timewatch.env` ומלא את הסיסמה.
    רשימת העובדים נקראת מהפורטל עצמו — ב-`employees.json` נשאר רק `watchNames`,
    כלומר על מי לשלוח התראה. שם פרטי מספיק ("ברינה"), גם כשהפורטל מציג
