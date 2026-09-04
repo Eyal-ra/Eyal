@@ -1,5 +1,5 @@
 const os = require('os'), fs = require('fs'), path = require('path');
-const { main, pathsIn } = require('./watch-presence.js');
+const { main, pathsIn, chooseNotifier } = require('./watch-presence.js');
 
 let pass = 0, fail = 0;
 function eq(name, got, want) {
@@ -102,6 +102,30 @@ function run(dataDir, payload, alerts, when) {
     eq('a second machine refuses rather than alerting', await call('TS01', ok([])), 1);
     eq('and alerts nobody', seen, []);
     eq('the original machine still works', await call('EYAL', ok([brina])), 0);
+  }
+
+  // The office notifier is a Python app with no known queue, so the queue is
+  // used only when one is configured and really there. An alert that arrives
+  // beats the right channel that does not.
+  {
+    const queue = fs.mkdtempSync(path.join(os.tmpdir(), 'notif-queue-'));
+    const toQueue = chooseNotifier({ notifier: { queueDir: [queue] } });
+    toQueue({ type: 'in', name: 'ברינה', since: '09:04', at: '2026-09-04T09:04:00Z' });
+    eq('a configured queue that exists receives the alert',
+      fs.readdirSync(queue).filter((f) => f.endsWith('.json')).length, 1);
+
+    const missing = path.join(queue, 'not-here');
+    const fallback = chooseNotifier({ notifier: { queueDir: [missing] } });
+    // Off Windows the balloon prints instead of drawing; the point is that
+    // it neither throws nor writes to a directory that is not there.
+    let threw = null;
+    try { fallback({ type: 'in', name: 'ברינה', since: '09:04', at: 'x' }); }
+    catch (err) { threw = err.message; }
+    eq('a configured queue that is missing falls back rather than throwing', threw, null);
+    eq('and nothing was created at the missing path', fs.existsSync(missing), false);
+
+    eq('no queue configured means no queue is invented',
+      typeof chooseNotifier({}), 'function');
   }
 
   console.log(`\n${pass} passed, ${fail} failed`);

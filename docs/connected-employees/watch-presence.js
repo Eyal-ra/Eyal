@@ -19,7 +19,29 @@ const fs = require('fs');
 const path = require('path');
 const { getConnectedEmployees, loadConfig, describeError } = require('./timewatch-client');
 const { createWatcher } = require('./presence-watcher');
-const { createNotifier } = require('./notify-presence');
+const { createNotifier, resolveQueueDir } = require('./notify-presence');
+const { createToastNotifier } = require('./notify-toast');
+
+/**
+ * Where the alert goes.
+ *
+ * The office notifier is a Python app with no known file queue, so the queue
+ * is used only when one is configured and actually present. Everything else
+ * falls back to a Windows tray balloon, which needs nothing installed - an
+ * alert that arrives is worth more than the right channel that does not.
+ */
+function chooseNotifier(cfg) {
+  const configured = (cfg.notifier && cfg.notifier.queueDir) || null;
+  if (configured) {
+    try {
+      resolveQueueDir(configured);
+      return createNotifier(cfg.notifier);
+    } catch (err) {
+      console.error(`[presence] ${err.message} - falling back to a tray balloon`);
+    }
+  }
+  return createToastNotifier();
+}
 
 const DATA_DIR = process.env.TIMEWATCH_DATA || path.join(__dirname, 'data');
 
@@ -78,7 +100,7 @@ async function main(options = {}) {
     logDir: files.logDir,
     watchNames: cfg.watchNames,
     initialSnapshot: previous ? previous.connected : null,
-    notify: options.notify || createNotifier(cfg.notifier || {}),
+    notify: options.notify || chooseNotifier(cfg),
   });
 
   const events = watcher.update(result.connected, now);
@@ -114,4 +136,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { main, pathsIn, DATA_DIR };
+module.exports = { main, pathsIn, chooseNotifier, DATA_DIR };
