@@ -54,7 +54,6 @@ function buildNotification(event, options = {}) {
  * file. UTF-8 explicitly, so Hebrew survives the trip.
  */
 function writeRequest(dir, notification, now) {
-  fs.mkdirSync(dir, { recursive: true });
   const stamp = (now || new Date()).getTime();
   const unique = Math.random().toString(36).slice(2, 8);
   const finalPath = path.join(dir, `presence-${stamp}-${unique}.json`);
@@ -65,16 +64,45 @@ function writeRequest(dir, notification, now) {
 }
 
 /**
+ * The queue directory the notifier is actually watching.
+ *
+ * Deliberately does not create one. Creating a missing directory turns a
+ * wrong path into a silent success - alerts are written forever and nothing
+ * ever reads them - and a presence alert that never arrives is exactly the
+ * failure nobody notices. An error naming every path tried is the cheaper
+ * outcome.
+ */
+function resolveQueueDir(candidates) {
+  const list = (Array.isArray(candidates) ? candidates : [candidates]).filter(Boolean);
+  for (const dir of list) {
+    try {
+      if (fs.statSync(dir).isDirectory()) return dir;
+    } catch { /* next candidate */ }
+  }
+  throw new Error(`no notifier queue directory found - tried: ${list.join(', ')}`);
+}
+
+/**
  * The `notify` callback for server-endpoint.js.
  *
- *   notify: createNotifier({ queueDir: 'C:\\notif-requests' })
+ *   notify: createNotifier({ queueDir: 'C:\\notif_test\\app\\presence-requests' })
+ *
+ * `queueDir` may be a list, and the first one that exists wins; the office
+ * notifier has lived in more than one place. Resolution happens on each
+ * event rather than once at startup, so a queue directory that appears later
+ * - or moves - does not need the dashboard restarted.
  *
  * If the notifier expects different field names, map them here - this is the
  * single place that knows its schema.
  */
 function createNotifier(options = {}) {
-  const dir = options.queueDir || 'C:\\notif-requests';
-  return (event) => writeRequest(dir, buildNotification(event, options));
+  const candidates = options.queueDir || [
+    'C:\\notif_test\\app\\presence-requests',
+    'C:\\notif-requests',
+  ];
+  return (event) => writeRequest(resolveQueueDir(candidates), buildNotification(event, options));
 }
 
-module.exports = { createNotifier, buildNotification, writeRequest, COLORS };
+module.exports = {
+  createNotifier, buildNotification, writeRequest, resolveQueueDir, COLORS,
+};

@@ -1,5 +1,7 @@
 const os = require('os'), fs = require('fs'), path = require('path');
-const { buildNotification, createNotifier, COLORS } = require('./notify-presence.js');
+const {
+  buildNotification, createNotifier, resolveQueueDir, COLORS,
+} = require('./notify-presence.js');
 
 let pass = 0, fail = 0;
 function eq(name, got, want) {
@@ -51,5 +53,35 @@ for (let i = 0; i < 20; i++) notify(arrival);
 eq('rapid events do not collide', fs.readdirSync(dir).length, before + 20);
 
 fs.rmSync(dir, { recursive: true, force: true });
+// A wrong queue path used to create itself: alerts written forever, nothing
+// reading them. A presence alert that never arrives is the failure nobody
+// notices, so this has to be loud.
+{
+  const real = fs.mkdtempSync(path.join(os.tmpdir(), 'notif-real-'));
+  const missing = path.join(real, 'does-not-exist');
+
+  eq('an existing directory is chosen', resolveQueueDir([missing, real]), real);
+  eq('the first existing one wins', resolveQueueDir([real, missing]), real);
+
+  let message = null;
+  try { resolveQueueDir([missing, path.join(real, 'nor-this')]); }
+  catch (err) { message = err.message; }
+  eq('a missing directory names every path tried',
+    [/no notifier queue directory/.test(message || ''), (message || '').includes(missing)],
+    [true, true]);
+  eq('and creates nothing', fs.existsSync(missing), false);
+
+  const notifier = createNotifier({ queueDir: [missing, real] });
+  notifier({ type: 'in', name: 'ברינה', since: '09:04', at: '2026-09-04T09:04:00Z' });
+  eq('the alert lands in the directory that exists',
+    fs.readdirSync(real).filter((f) => f.endsWith('.json')).length, 1);
+
+  let failed = null;
+  const broken = createNotifier({ queueDir: [missing] });
+  try { broken({ type: 'in', name: 'ברינה', since: '09:04', at: '2026-09-04T09:04:00Z' }); }
+  catch (err) { failed = err.message; }
+  eq('a notifier with nowhere to write throws', /no notifier queue directory/.test(failed || ''), true);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
