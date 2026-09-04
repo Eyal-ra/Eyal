@@ -56,6 +56,28 @@ const named = `<table><tr><td>ברינה</td><td>ד 02-09-2026</td><td>ד</td><t
 eq('extra leading column does not shift the mapping', pick(extractDayPunches(named, new Date(2026, 8, 2))),
   { connected: true, since: '09:04', pairs: [{ entry: '09:04', exit: null }], found: true });
 
+// The real update.php is hand-written HTML that never closes <tr> or <td>.
+// A <tr>...</tr> matcher found two rows in a 150KB page - the filter bar,
+// which happens to be well formed - and missed the attendance table entirely.
+const loose = `<table><tr><td>\u05d1\u05e8\u05d9\u05e0\u05d4</table>
+<table>
+<tr><td>\u05d3 02-09-2026<td>\u05e8\u05d1\u05d9\u05e2\u05d9<td>8 \u05e9\u05e2\u05d5\u05ea<td>9:06
+    <td><img src="mobile.png">08:13<td>12:30<td>13:15<td><td><td><td><td><td>4:17
+<tr><td>\u05d4 03-09-2026<td>\u05d7\u05de\u05d9\u05e9\u05d9<td>8 \u05e9\u05e2\u05d5\u05ea<td>9:06
+    <td><td><td><td><td><td><td><td><td>
+</table>`;
+eq('unclosed tr and td still parse', pick(extractDayPunches(loose, new Date(2026, 8, 2))),
+  { connected: true, since: '13:15', pairs: [{ entry: '08:13', exit: '12:30' }, { entry: '13:15', exit: null }], found: true });
+eq('unclosed row with no punches', pick(extractDayPunches(loose, new Date(2026, 8, 3))),
+  { connected: false, since: null, pairs: [], found: true });
+
+// Same day number in two different months must not cross-match.
+const twoMonths = `<table><tr><td>\u05d3 02-08-2026<td>\u05d3<td>8<td>9:06<td>07:00<td>15:00<td><td><td><td><td><td><td>8:00
+<tr><td>\u05d3 02-09-2026<td>\u05d3<td>8<td>9:06<td>09:04<td><td><td><td><td><td><td><td>3:30
+</table>`;
+eq('picks the right month', pick(extractDayPunches(twoMonths, new Date(2026, 8, 2))),
+  { connected: true, since: '09:04', pairs: [{ entry: '09:04', exit: null }], found: true });
+
 eq('minutesSince 09:04 -> 12:34', minutesSince('09:04', new Date(2026, 8, 2, 12, 34)), 210);
 
 console.log(`\n${pass} passed, ${fail} failed`);

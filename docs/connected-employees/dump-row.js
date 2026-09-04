@@ -9,7 +9,7 @@
  *   node dump-row.js [employeeId] [dd/mm/yyyy]
  */
 
-const { loadConfig, discoverAttendance } = require('./timewatch-client');
+const { loadConfig, discoverAttendance, rowsWithCells } = require('./timewatch-client');
 const { discoverLoginForm, buildLoginBody } = require('./login-form');
 const { buildAttendanceQuery } = require('./attendance-form');
 
@@ -50,7 +50,31 @@ async function login(cfg) {
 }
 
 const textOf = (h) => h.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
-const CELL_RE = /<t[dh]\b[^>]*>[\s\S]*?<\/t[dh]>/gi;
+
+/**
+ * List every dropdown on the page with its options.
+ *
+ * The employee picker is what maps a TimeWatch employee number to a name,
+ * and reading it from the HTML is the only reliable way to get that pairing:
+ * on screen the numbers and the Hebrew names render in opposite directions,
+ * so the visual order cannot be trusted.
+ */
+function dumpSelects(html) {
+  const selects = html.match(/<select\b[^>]*>[\s\S]*?<\/select>/gi) || [];
+  for (const sel of selects) {
+    const name = (/name\s*=\s*["']?([^"'\s>]+)/i.exec(sel) || [])[1] || '(unnamed)';
+    const opts = sel.match(/<option\b[^>]*>[^<]*/gi) || [];
+    if (!opts.length) continue;
+    console.log(`\n  select name="${name}"  (${opts.length} options)`);
+    for (const opt of opts.slice(0, 40)) {
+      const value = (/value\s*=\s*["']?([^"'>]*)/i.exec(opt) || [])[1] || '';
+      const label = textOf(opt.replace(/<[^>]*>/, ''));
+      if (!label && !value) continue;
+      console.log(`    value=${JSON.stringify(value)}  label=${JSON.stringify(label)}`);
+    }
+    if (opts.length > 40) console.log(`    ... ${opts.length - 40} more`);
+  }
+}
 
 async function main() {
   const cfg = loadConfig();
@@ -87,17 +111,26 @@ async function main() {
   const html = await readBody(res);
   console.log('  HTTP', res.status, '|', html.length, 'chars');
 
-  const rows = (html.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/gi) || [])
-    .map((r) => (r.match(CELL_RE) || []).map(textOf));
+  console.log('\n=== dropdowns on the page ===');
+  dumpSelects(html);
+
+  const rows = rowsWithCells(html);
   console.log('\n=== rows found ===\n ', rows.length);
 
   const dateRe = new RegExp(`(^|\\D)0?${d}[./-]0?${mo}[./-]\\d{4}`);
   const idx = rows.findIndex((cells) => cells.some((c) => dateRe.test(c)));
 
   if (idx === -1) {
-    console.log(`\n  no row matched ${d}/${mo}/${y}. First 3 rows with any cells:`);
-    rows.filter((r) => r.length).slice(0, 3).forEach((cells, i) =>
+    console.log(`\n  no row matched ${d}/${mo}/${y}.`);
+    const dated = rows.filter((cells) => cells.some((c) => /\b\d{1,2}[./-]\d{1,2}[./-]\d{4}\b/.test(c)));
+    console.log(`  rows carrying any date: ${dated.length}. Showing up to 3:`);
+    dated.slice(0, 3).forEach((cells, i) =>
       console.log(`   row ${i}: ` + cells.map((c, j) => `[${j}] ${c || '-'}`).join(' | ')));
+    if (!dated.length) {
+      console.log('  no dated rows at all. First 5 non-empty rows:');
+      rows.filter((r) => r.some((c) => c)).slice(0, 5).forEach((cells, i) =>
+        console.log(`   row ${i}: ` + cells.map((c, j) => `[${j}] ${c || '-'}`).join(' | ')));
+    }
     return 1;
   }
 

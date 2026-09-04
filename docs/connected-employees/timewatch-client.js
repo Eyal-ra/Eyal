@@ -170,9 +170,24 @@ function textOf(html) {
     .trim();
 }
 
+/**
+ * Split a table into rows and cells without requiring closing tags.
+ *
+ * The attendance page is old hand-written HTML that leaves <tr> and <td>
+ * unclosed. Matching <tr>...</tr> found two rows in a 150KB page - the
+ * filter bar, which happens to be well formed - and missed the attendance
+ * table entirely. Splitting on the opening tags reads both.
+ */
 function rowsWithCells(html) {
-  return (html.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/gi) || [])
-    .map((row) => (row.match(CELL_RE) || []).map(textOf));
+  return html
+    .split(/<tr\b[^>]*>/i)
+    .slice(1)
+    .map((row) => row
+      .split(/<t[dh]\b[^>]*>/i)
+      .slice(1)
+      // A cell ends at its own closing tag if it has one, or at the next
+      // cell or row, which the split already handled.
+      .map((cell) => textOf(cell.replace(/<\/t[dh]>[\s\S]*$/i, ''))));
 }
 
 function timeAt(cells, index) {
@@ -315,5 +330,5 @@ async function getConnectedEmployees(options = {}) {
 
 module.exports = {
   getConnectedEmployees, loadConfig, extractDayPunches, minutesSince, parseEnv,
-  discoverAttendance, PUNCH_OFFSETS,
+  discoverAttendance, PUNCH_OFFSETS, rowsWithCells,
 };
