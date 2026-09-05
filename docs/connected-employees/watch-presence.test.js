@@ -156,6 +156,56 @@ function run(dataDir, payload, alerts, when) {
     eq('a missing notifier falls through to the balloon', threw, null);
   }
 
+  // The card reads a file beside dashboard.html, so there is no server to
+  // keep alive and it works whether the page is served or opened directly.
+  {
+    const board = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'presence-pub-'));
+    await main({
+      dataDir: dir, config, quiet: true, publishTo: [board],
+      now: new Date(2026, 8, 6, 10, 0),
+      fetchPresence: async () => ok([brina], [{ name: 'דבח שלו', lastExit: '17:00', punches: 2 }]),
+      notify: () => {},
+    });
+    const published = JSON.parse(fs.readFileSync(path.join(board, 'presence.json'), 'utf8'));
+    eq('the snapshot lands beside the dashboard',
+      [published.connected.length, published.away.length, published.warning], [1, 1, null]);
+
+    // file:// blocks fetch; a script tag still loads.
+    const js = fs.readFileSync(path.join(board, 'presence-data.js'), 'utf8');
+    const window = {};
+    new Function('window', js)(window);
+    eq('the script twin carries the same snapshot',
+      window.__presence.connected[0].name, 'זילברברג ברינה');
+    eq('no temp files left in the dashboard folder',
+      fs.readdirSync(board).filter((f) => f.endsWith('.tmp')), []);
+
+    // A failed read must reach the card too, or it shows yesterday as today.
+    await main({
+      dataDir: dir, config, quiet: true, publishTo: [board],
+      now: new Date(2026, 8, 6, 10, 5),
+      fetchPresence: async () => ({
+        fetchedAt: 'x', connected: [], away: [], errors: [], warning: 'no data rows',
+      }),
+      notify: () => {},
+    });
+    eq('a failed read publishes the warning rather than stale names',
+      JSON.parse(fs.readFileSync(path.join(board, 'presence.json'), 'utf8')).warning,
+      'no data rows');
+
+    // An unreachable folder must not take the poll down with it.
+    let threw = null;
+    try {
+      await main({
+        dataDir: dir, config, quiet: true,
+        publishTo: [path.join(board, 'no', 'such', 'place', '\0bad')],
+        now: new Date(2026, 8, 6, 10, 10),
+        fetchPresence: async () => ok([brina]), notify: () => {},
+      });
+    } catch (err) { threw = err.message; }
+    eq('an unwritable dashboard folder does not stop the poll', threw, null);
+  }
+
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 })();

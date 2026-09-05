@@ -88,6 +88,32 @@ function writeJson(file, value) {
   fs.renameSync(temp, file);
 }
 
+
+/**
+ * Put the snapshot where the dashboard can read it.
+ *
+ * Beside dashboard.html rather than behind an endpoint, so the card works
+ * whether the page is served or opened directly, with no server to keep
+ * alive. The .js twin is for file://, where fetch is blocked but a script
+ * tag still loads.
+ */
+function publish(snapshot, targets) {
+  const written = [];
+  for (const dir of targets) {
+    try {
+      writeJson(path.join(dir, 'presence.json'), snapshot);
+      const js = `window.__presence = ${JSON.stringify(snapshot, null, 2)};\n`;
+      const file = path.join(dir, 'presence-data.js');
+      fs.writeFileSync(`${file}.tmp`, js, 'utf8');
+      fs.renameSync(`${file}.tmp`, file);
+      written.push(dir);
+    } catch (err) {
+      console.error(`[presence] could not publish to ${dir}: ${err.message}`);
+    }
+  }
+  return written;
+}
+
 async function main(options = {}) {
   const log = options.quiet ? () => {} : console.log;
   const cfg = options.config || loadConfig();
@@ -100,9 +126,11 @@ async function main(options = {}) {
     // The state file is deliberately left alone. Treating an unreadable
     // report as "nobody is in" would alert that the whole office left.
     console.error('[presence] could not read attendance:', result.warning);
-    writeJson(files.snapshot, {
+    const failed = {
       fetchedAt: result.fetchedAt, connected: [], away: [], warning: result.warning,
-    });
+    };
+    writeJson(files.snapshot, failed);
+    publish(failed, options.publishTo || (cfg.dashboard && cfg.dashboard.publishTo) || []);
     return 1;
   }
 
@@ -125,13 +153,16 @@ async function main(options = {}) {
 
   const events = watcher.update(result.connected, now);
   writeJson(files.state, { at: now.toISOString(), machine, connected: result.connected });
-  writeJson(files.snapshot, {
+  const snapshot = {
     fetchedAt: result.fetchedAt,
     connected: result.connected,
     away: result.away,
     errors: result.errors,
     warning: null,
-  });
+  };
+  writeJson(files.snapshot, snapshot);
+  const published = publish(snapshot,
+    options.publishTo || (cfg.dashboard && cfg.dashboard.publishTo) || []);
 
   const changes = events.filter((e) => e.type !== 'initial');
   // The employee count is not decoration: "0 in" out of seven is a quiet
@@ -139,7 +170,8 @@ async function main(options = {}) {
   // same line.
   const read = result.connected.length + result.away.length;
   log(`[presence] ${read} employees read, ${result.connected.length} in, `
-    + `${changes.length} change(s)`);
+    + `${changes.length} change(s)`
+    + (published.length ? `, published to ${published.length} dashboard folder(s)` : ''));
   for (const event of changes) {
     log(`  ${event.type === 'in' ? 'נכנס/ה' : 'יצא/ה'}: ${event.name}`);
   }
@@ -156,4 +188,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { main, pathsIn, chooseNotifier, DATA_DIR };
+module.exports = { main, pathsIn, chooseNotifier, publish, DATA_DIR };

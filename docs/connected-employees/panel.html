@@ -5,7 +5,10 @@
      That existing card is a heartbeat of the notifier (alive/down).
      This one is attendance: who is clocked in per TimeWatch.
 
-     Requires GET /api/connected-employees (server-endpoint.js).
+     Reads presence.json written beside dashboard.html by the poller
+     (watch-presence.js). Falls back to the /api endpoint when the
+     dashboard is served by server-endpoint.js, and to a script-tag
+     global when the page is opened from file://.
      Styles are scoped to #tw-card so they cannot leak into the rest
      of the dashboard. If the dashboard already has card classes,
      swap the wrapper for them and drop the <style> block.
@@ -106,9 +109,13 @@
   #tw-card .tw-btn:disabled { opacity: .55; cursor: default; }
 </style>
 
+<script src="presence-data.js" onerror="void 0"></script>
 <script>
 (function () {
-  var ENDPOINT = '/api/connected-employees';
+  // In order of preference. The file beside the dashboard is what the
+  // poller writes, and works whether the page is served or opened directly;
+  // the API only exists when the dashboard runs server-endpoint.js.
+  var SOURCES = ['presence.json', '/api/connected-employees'];
   var REFRESH_MS = 60000;
 
   var body = document.getElementById('tw-body');
@@ -178,12 +185,28 @@
     });
   }
 
+  /* Try each source in turn. A 404 on the first is not an error worth
+     showing - it just means this dashboard is served the other way. */
+  function fetchFirst(sources) {
+    if (!sources.length) return Promise.reject(new Error('no source'));
+    return fetch(sources[0], { cache: 'no-store' })
+      .then(function (r) {
+        if (!r.ok) throw new Error(r.status);
+        return r.json();
+      })
+      .catch(function () { return fetchFirst(sources.slice(1)); });
+  }
+
   function load() {
     refreshBtn.disabled = true;
-    fetch(ENDPOINT, { cache: 'no-store' })
-      .then(function (r) { return r.json(); })
+    fetchFirst(SOURCES)
       .then(render)
-      .catch(function () { render({ error: true }); })
+      /* Opened from file://, where fetch is blocked: the poller also writes
+         presence-data.js, which a script tag can load. */
+      .catch(function () {
+        if (window.__presence) render(window.__presence);
+        else render({ error: true });
+      })
       .finally(function () { refreshBtn.disabled = false; });
   }
 
