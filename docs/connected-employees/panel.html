@@ -1,0 +1,217 @@
+<!-- ============================================================
+     "מי מחובר עכשיו (טיים ווטץ׳)" — a card for the bottom row of
+     dashboard.html, alongside "מי מחובר להתראות".
+
+     That existing card is a heartbeat of the notifier (alive/down).
+     This one is attendance: who is clocked in per TimeWatch.
+
+     Reads presence.json written beside dashboard.html by the poller
+     (watch-presence.js). Falls back to the /api endpoint when the
+     dashboard is served by server-endpoint.js, and to a script-tag
+     global when the page is opened from file://.
+     Styles are scoped to #tw-card so they cannot leak into the rest
+     of the dashboard. If the dashboard already has card classes,
+     swap the wrapper for them and drop the <style> block.
+     ============================================================ -->
+<section class="tw-card" id="tw-card" dir="rtl" aria-live="polite">
+  <div class="tw-top">
+    <span class="tw-pill"><span class="tw-pill-dot"></span>טיים ווטץ׳</span>
+    <span class="tw-icon" aria-hidden="true">🕒</span>
+  </div>
+
+  <h3 class="tw-title">מי מחובר עכשיו</h3>
+  <p class="tw-sub">מי מהעובדים רשום כרגע כנוכח לפי טיים ווטץ׳ — כניסה בלי יציאה. מתעדכן לבד כל דקה.</p>
+
+  <div id="tw-body" class="tw-body">
+    <p class="tw-state">טוען…</p>
+  </div>
+
+  <div class="tw-foot">
+    <span id="tw-updated" class="tw-updated"></span>
+    <button type="button" id="tw-refresh" class="tw-btn">רענן ↻</button>
+  </div>
+</section>
+
+<style>
+  #tw-card {
+    --tw-on: #16a34a;
+    --tw-on-bg: #eafaf0;
+    --tw-line: #e5e8ec;
+    --tw-text: #1f2937;
+    --tw-muted: #6b7280;
+    --tw-warn: #b91c1c;
+    position: relative;
+    background: #fff;
+    border: 1px solid var(--tw-line);
+    border-top: 3px solid var(--tw-on);
+    border-radius: 14px;
+    padding: 16px 18px 12px;
+    box-shadow: 0 2px 10px rgba(16, 24, 40, .08);
+    font-family: "Segoe UI", Arial, sans-serif;
+    color: var(--tw-text);
+    display: flex;
+    flex-direction: column;
+    min-height: 220px;
+  }
+  #tw-card .tw-top {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  #tw-card .tw-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #f3f4f6; color: #374151;
+    border-radius: 999px; padding: 3px 10px;
+    font-size: 12px; font-weight: 600;
+  }
+  #tw-card .tw-pill-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--tw-on);
+  }
+  #tw-card .tw-icon { font-size: 18px; line-height: 1; }
+  #tw-card .tw-title { margin: 0 0 4px; font-size: 17px; font-weight: 700; }
+  #tw-card .tw-sub {
+    margin: 0 0 12px; font-size: 12.5px;
+    color: var(--tw-muted); line-height: 1.6;
+  }
+  #tw-card .tw-body { flex: 1; }
+  #tw-card .tw-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  #tw-card .tw-row {
+    display: flex; align-items: center; gap: 9px;
+    background: var(--tw-on-bg); border-radius: 8px;
+    padding: 7px 11px; font-size: 14px;
+  }
+  #tw-card .tw-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--tw-on); flex: none;
+  }
+  #tw-card .tw-name { font-weight: 600; }
+  #tw-card .tw-since { margin-inline-start: auto; font-size: 12.5px; color: var(--tw-muted); }
+  #tw-card .tw-state { margin: 0; font-size: 13.5px; color: var(--tw-muted); }
+  #tw-card .tw-error { color: var(--tw-warn); }
+  #tw-card .tw-away {
+    margin-top: 10px; padding-top: 9px;
+    border-top: 1px dashed var(--tw-line);
+    font-size: 12.5px; color: var(--tw-muted); line-height: 1.6;
+  }
+  #tw-card .tw-foot {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-top: 12px; padding-top: 10px;
+    border-top: 1px solid var(--tw-line);
+  }
+  #tw-card .tw-updated { font-size: 11.5px; color: var(--tw-muted); }
+  #tw-card .tw-btn {
+    font: inherit; font-size: 12.5px; cursor: pointer;
+    background: #f9fafb; color: #374151;
+    border: 1px solid var(--tw-line); border-radius: 8px;
+    padding: 5px 12px;
+  }
+  #tw-card .tw-btn:hover:not(:disabled) { background: #f3f4f6; }
+  #tw-card .tw-btn:disabled { opacity: .55; cursor: default; }
+</style>
+
+<script src="presence-data.js" onerror="void 0"></script>
+<script>
+(function () {
+  // In order of preference. The file beside the dashboard is what the
+  // poller writes, and works whether the page is served or opened directly;
+  // the API only exists when the dashboard runs server-endpoint.js.
+  var SOURCES = ['presence.json', '/api/connected-employees'];
+  var REFRESH_MS = 60000;
+
+  var body = document.getElementById('tw-body');
+  var updatedEl = document.getElementById('tw-updated');
+  var refreshBtn = document.getElementById('tw-refresh');
+
+  // textContent only - employee names are never injected as HTML.
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function humanDuration(minutes) {
+    var h = Math.floor(minutes / 60), m = minutes % 60;
+    if (h && m) return h + ' שע׳ ' + m + ' דק׳';
+    if (h) return h + ' שע׳';
+    return m + ' דק׳';
+  }
+
+  function render(data) {
+    body.textContent = '';
+
+    if (data.error) {
+      body.appendChild(el('p', 'tw-state tw-error', 'שגיאה בטעינה — יתעדכן לבד'));
+      return;
+    }
+
+    /* A report that could not be read must never render as an empty office -
+       that is the one wrong answer that looks like a right one. */
+    if (data.warning) {
+      body.appendChild(el('p', 'tw-state tw-error', 'לא הצלחתי לקרוא את הנוכחות'));
+      body.appendChild(el('div', 'tw-away tw-error', data.warning));
+      updatedEl.textContent = '';
+      return;
+    }
+
+    var connected = data.connected || [];
+    if (connected.length === 0) {
+      body.appendChild(el('p', 'tw-state', 'אף אחד לא רשום כנוכח כרגע.'));
+    } else {
+      var list = el('ul', 'tw-list');
+      connected.forEach(function (emp) {
+        var row = el('li', 'tw-row');
+        row.appendChild(el('span', 'tw-dot'));
+        row.appendChild(el('span', 'tw-name', emp.name));
+        row.appendChild(el('span', 'tw-since',
+          'מ־' + emp.since + ' · ' + humanDuration(emp.minutes)));
+        list.appendChild(row);
+      });
+      body.appendChild(list);
+    }
+
+    var away = data.away || [];
+    if (away.length) {
+      body.appendChild(el('div', 'tw-away',
+        'לא נוכחים: ' + away.map(function (e) { return e.name; }).join(', ')));
+    }
+    if (data.errors && data.errors.length) {
+      body.appendChild(el('div', 'tw-away tw-error',
+        'לא נקראו: ' + data.errors.map(function (e) { return e.name; }).join(', ')));
+    }
+
+    updatedEl.textContent = 'עודכן ' + new Date(data.fetchedAt).toLocaleTimeString('he-IL', {
+      hour: '2-digit', minute: '2-digit'
+    });
+  }
+
+  /* Try each source in turn. A 404 on the first is not an error worth
+     showing - it just means this dashboard is served the other way. */
+  function fetchFirst(sources) {
+    if (!sources.length) return Promise.reject(new Error('no source'));
+    return fetch(sources[0], { cache: 'no-store' })
+      .then(function (r) {
+        if (!r.ok) throw new Error(r.status);
+        return r.json();
+      })
+      .catch(function () { return fetchFirst(sources.slice(1)); });
+  }
+
+  function load() {
+    refreshBtn.disabled = true;
+    fetchFirst(SOURCES)
+      .then(render)
+      /* Opened from file://, where fetch is blocked: the poller also writes
+         presence-data.js, which a script tag can load. */
+      .catch(function () {
+        if (window.__presence) render(window.__presence);
+        else render({ error: true });
+      })
+      .finally(function () { refreshBtn.disabled = false; });
+  }
+
+  refreshBtn.addEventListener('click', load);
+  load();
+  setInterval(load, REFRESH_MS);
+})();
+</script>

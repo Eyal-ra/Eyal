@@ -10,3 +10,7 @@ state/
 .pytest_cache/
 .mypy_cache/
 .DS_Store
+
+# TimeWatch secrets - never commit
+*.env
+!*.env.example
